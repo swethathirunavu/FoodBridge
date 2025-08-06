@@ -7,4 +7,3 @@ plotly>=5.15.0
 folium>=0.14.0
 streamlit-folium>=0.13.0
 geopy>=2.3.0
-hashlib3>=1.0.1
