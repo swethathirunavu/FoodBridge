@@ -780,13 +780,6 @@ elif page == "📊 Analytics":
             .round(2)
         )
 
-    # ------- Geo -------
-    with tabs[3]:
-        st.caption("Donation hotspots")
-        center = [ai.donations["latitude"].mean(), ai.donations["longitude"].mean()]
-        m = folium.Map(location=center, zoom_start=10)
-        HeatMap([[r.latitude, r.longitude, r.quantity_kg] for _, r in ai.donations.iterrows()]).add_to(m)
-        st_folium(m, width=820, height=520)
 
     # ------- Anomalies -------
     with tabs[4]:
