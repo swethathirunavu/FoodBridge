@@ -10,8 +10,9 @@ import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
 import folium
-from folium.plugins import HeatMap
+from folium.plugins import HeatMap, MarkerCluster
 from streamlit_folium import st_folium
+
 
 from sklearn.ensemble import RandomForestRegressor, IsolationForest
 from sklearn.cluster import KMeans
@@ -779,6 +780,67 @@ elif page == "📊 Analytics":
             )
             .round(2)
         )
+    # ------- Geo -------
+    with tabs[3]:
+        st.caption("Donation hotspots")
+    
+        # 1) Prepare clean data
+        geo_df = ai.donations[['latitude', 'longitude', 'quantity_kg']].copy()
+        # Guard against bad values / types
+        geo_df = geo_df.dropna(subset=['latitude', 'longitude'])
+        # Filter out-of-range coordinates
+        geo_df = geo_df[(geo_df['latitude'].between(-90, 90)) & (geo_df['longitude'].between(-180, 180))]
+        # Ensure numeric floats
+        geo_df['latitude'] = geo_df['latitude'].astype(float)
+        geo_df['longitude'] = geo_df['longitude'].astype(float)
+        geo_df['quantity_kg'] = pd.to_numeric(geo_df['quantity_kg'], errors='coerce').fillna(0.0)
+    
+        # Optional: cap weight to avoid extreme skew & ensure > 0 for visualization
+        geo_df['weight'] = geo_df['quantity_kg'].clip(lower=0.1, upper=50.0)
+    
+        if geo_df.empty:
+            st.info("No valid geospatial donation data available to render.")
+        else:
+            # 2) Performance guard: sample if huge
+            MAX_POINTS = 8000
+            if len(geo_df) > MAX_POINTS:
+                geo_df = geo_df.sample(MAX_POINTS, random_state=42).reset_index(drop=True)
+    
+            # 3) Map center fallback
+            center_lat = float(geo_df['latitude'].mean()) if not geo_df['latitude'].isna().all() else 11.0168
+            center_lon = float(geo_df['longitude'].mean()) if not geo_df['longitude'].isna().all() else 76.9558
+    
+            # 4) Build map
+            m = folium.Map(location=[center_lat, center_lon], zoom_start=10, control_scale=True)
+    
+            # HeatMap expects a list of [lat, lon, weight]
+            heat_data = geo_df[['latitude', 'longitude', 'weight']].values.tolist()
+    
+            # 5) Add heat layer (tuned for clarity & performance)
+            HeatMap(
+                heat_data,
+                radius=12,         # smaller radius for sharper hotspots (adjust 10–18)
+                blur=14,           # soft edges
+                min_opacity=0.25,
+                max_zoom=18
+            ).add_to(m)
+    
+            # 6) Optional: show a few donor markers for context
+            marker_df = geo_df.sample(min(60, len(geo_df)), random_state=7)  # keep it light
+            cluster = MarkerCluster().add_to(m)
+            for lat, lon, w in marker_df[['latitude', 'longitude', 'weight']].itertuples(index=False):
+                folium.CircleMarker(
+                    location=[float(lat), float(lon)],
+                    radius=4,
+                    weight=1,
+                    color="#2563EB",           # nice blue
+                    fill=True,
+                    fill_opacity=0.7,
+                    popup=f"~{w:.1f} kg"
+                ).add_to(cluster)
+    
+            # 7) Render
+            st_folium(m, width=820, height=520)
 
 
     # ------- Anomalies -------
