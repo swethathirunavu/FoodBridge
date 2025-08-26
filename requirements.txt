@@ -1,35 +1,5 @@
-# CORE REQUIREMENTS - ESSENTIAL ONLY
-# Test this minimal version first, then add more libraries as needed
-
-# Core Streamlit
-streamlit>=1.25.0
-
-# Data Manipulation (Core)
+streamlit>=1.28.0
 pandas>=1.5.0
-numpy>=1.23.0
-
-# Machine Learning (Essential)
-scikit-learn>=1.2.0
-xgboost>=1.6.0
-
-# Data Visualization (Core)
+numpy>=1.24.0
 matplotlib>=3.6.0
-seaborn>=0.11.0
-plotly>=5.15.0
-
-# Geographic Mapping
-folium>=0.12.0
-streamlit-folium>=0.13.0
-
-# Time Series Analysis
-statsmodels>=0.13.0
-
-# Network Analysis
-networkx>=2.8
-
-# Scientific Computing
-scipy>=1.9.0
-
-# Additional Utilities
-joblib>=1.2.0
-python-dateutil>=2.8.0
+seaborn>=0.12.
