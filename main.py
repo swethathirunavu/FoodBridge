@@ -6,30 +6,37 @@ import seaborn as sns
 import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-from datetime import datetime, timedelta, time
-import time as tm
 import folium
 from streamlit_folium import st_folium
-from folium.plugins import HeatMap
-import random
-from geopy.distance import geodesic
-import hashlib
-import warnings
-from scipy import stats
-import networkx as nx
-
-# Machine Learning imports
 from sklearn.ensemble import RandomForestRegressor, IsolationForest
 from sklearn.cluster import KMeans, DBSCAN
 from sklearn.preprocessing import StandardScaler, LabelEncoder
 from sklearn.model_selection import train_test_split
-from sklearn.metrics import mean_absolute_error, r2_score
+from sklearn.metrics import mean_absolute_error, r2_score, classification_report
 from sklearn.linear_model import LinearRegression
-import xgboost as xgb
+from sklearn.tree import DecisionTreeClassifier
+import warnings
+import datetime
+from datetime import timedelta, time
+import hashlib
+import time as tm
+from scipy import stats
+from statsmodels.tsa.seasonal import seasonal_decompose
+from statsmodels.tsa.arima.model import ARIMA
+import networkx as nx
+import random
+from geopy.distance import geodesic
+
+# Try to import xgboost, fall back to RandomForest if not available
+try:
+    import xgboost as xgb
+    XGBOOST_AVAILABLE = True
+except ImportError:
+    XGBOOST_AVAILABLE = False
 
 warnings.filterwarnings('ignore')
 
-# Set page configuration
+# Configure page
 st.set_page_config(
     page_title="FoodBridge - AI-Powered Food Rescue Platform",
     page_icon="🍲",
@@ -37,7 +44,7 @@ st.set_page_config(
     initial_sidebar_state="expanded"
 )
 
-# Custom CSS for better appearance
+# Custom CSS
 st.markdown("""
 <style>
     .main {
@@ -152,13 +159,14 @@ class FoodBridgeDataScience:
             location = locations[i % len(locations)]
             donor_type = np.random.choice(donor_types)
             
+            # Features that affect donation patterns
             donor = {
                 'donor_id': f'D_{i:03d}',
                 'name': f'{donor_type}_{i}',
                 'type': donor_type,
                 'latitude': location[0] + np.random.normal(0, 0.1),
                 'longitude': location[1] + np.random.normal(0, 0.1),
-                'size_score': np.random.uniform(1, 10),
+                'size_score': np.random.uniform(1, 10),  # Business size
                 'sustainability_score': np.random.uniform(1, 10),
                 'avg_daily_footfall': np.random.randint(50, 1000),
                 'years_operating': np.random.randint(1, 20),
@@ -175,7 +183,7 @@ class FoodBridgeDataScience:
         donations = []
         
         # Generate 2 years of daily data
-        start_date = datetime.now() - timedelta(days=730)
+        start_date = datetime.datetime.now() - timedelta(days=730)
         
         for day in range(730):
             current_date = start_date + timedelta(days=day)
@@ -260,7 +268,7 @@ class FoodBridgeDataScience:
     def _generate_external_factors(self):
         """Generate weather and external factors data"""
         factors = []
-        start_date = datetime.now() - timedelta(days=365)
+        start_date = datetime.datetime.now() - timedelta(days=365)
         
         for day in range(365):
             current_date = start_date + timedelta(days=day)
@@ -270,8 +278,8 @@ class FoodBridgeDataScience:
                 'temperature': np.random.normal(25, 8),
                 'rainfall': max(0, np.random.exponential(2)),
                 'humidity': np.random.uniform(40, 90),
-                'festival_day': np.random.random() < 0.05,
-                'public_holiday': np.random.random() < 0.03,
+                'festival_day': np.random.random() < 0.05,  # 5% chance
+                'public_holiday': np.random.random() < 0.03,  # 3% chance
                 'economic_index': np.random.normal(100, 10)
             }
             factors.append(factor)
@@ -384,19 +392,10 @@ class FoodBridgeDataScience:
         le = LabelEncoder()
         features_data = self.ml_data.copy()
         
-        # Handle missing values and encode categorical variables
-        features_data = features_data.fillna(0)
-        
-        if len(features_data['food_type'].unique()) > 1:
-            features_data['food_type_encoded'] = le.fit_transform(features_data['food_type'].astype(str))
-        else:
-            features_data['food_type_encoded'] = 0
-            
-        if len(features_data['type'].unique()) > 1:
-            le_type = LabelEncoder()
-            features_data['type_encoded'] = le_type.fit_transform(features_data['type'].astype(str))
-        else:
-            features_data['type_encoded'] = 0
+        # Encode categorical variables
+        features_data['food_type_encoded'] = le.fit_transform(features_data['food_type'])
+        features_data['type_encoded'] = le.fit_transform(features_data['type'])
+        features_data['urgency_encoded'] = features_data['hours_to_expire']
         
         features = ['quantity_kg', 'hours_to_expire', 'size_score', 'sustainability_score',
                    'temperature', 'rainfall', 'humidity', 'day_of_week', 'hour_posted',
@@ -406,7 +405,10 @@ class FoodBridgeDataScience:
         y = features_data['pickup_success'].astype(int)
         
         # Train model
-        model = xgb.XGBClassifier(random_state=42)
+        if XGBOOST_AVAILABLE:
+            model = xgb.XGBClassifier(random_state=42)
+        else:
+            model = RandomForestRegressor(n_estimators=100, random_state=42)
         model.fit(X, y)
         
         return model
@@ -444,22 +446,29 @@ class FoodBridgeDataScience:
     
     def train_optimization_model(self):
         """Train model for route optimization"""
+        
+        # Simple optimization model for delivery routes
+        # This would typically involve more complex algorithms like TSP solvers
+        
         return {"status": "trained", "method": "distance_based"}
 
-# Initialize session state
-if 'food_donations' not in st.session_state:
-    st.session_state.food_donations = []
-if 'volunteers' not in st.session_state:
-    st.session_state.volunteers = []
-if 'organizations' not in st.session_state:
-    st.session_state.organizations = []
-if 'current_user_type' not in st.session_state:
-    st.session_state.current_user_type = None
-if 'current_user' not in st.session_state:
-    st.session_state.current_user = None
+# Initialize session state for operational data
+def initialize_session_state():
+    if 'food_donations' not in st.session_state:
+        st.session_state.food_donations = []
+    if 'volunteers' not in st.session_state:
+        st.session_state.volunteers = []
+    if 'organizations' not in st.session_state:
+        st.session_state.organizations = []
+    if 'current_user_type' not in st.session_state:
+        st.session_state.current_user_type = None
+    if 'current_user' not in st.session_state:
+        st.session_state.current_user = None
+    if 'foodbridge_ds' not in st.session_state:
+        st.session_state.foodbridge_ds = None
 
-# Sample data initialization
 def initialize_sample_data():
+    """Initialize sample operational data"""
     if len(st.session_state.food_donations) == 0:
         sample_donations = [
             {
@@ -472,9 +481,9 @@ def initialize_sample_data():
                 'food_type': 'Cooked Meals',
                 'quantity': '50 servings',
                 'description': 'Freshly prepared vegetarian meals - rice, dal, vegetables',
-                'expiry_time': datetime.now() + timedelta(hours=4),
+                'expiry_time': datetime.datetime.now() + timedelta(hours=4),
                 'status': 'Available',
-                'created_at': datetime.now() - timedelta(hours=1),
+                'created_at': datetime.datetime.now() - timedelta(hours=1),
                 'claimed_by': None,
                 'delivered_to': None,
                 'special_instructions': 'Keep refrigerated, contains dairy',
@@ -490,31 +499,13 @@ def initialize_sample_data():
                 'food_type': 'Bakery Items',
                 'quantity': '30 pieces',
                 'description': 'Fresh bread, pastries, and cakes from today',
-                'expiry_time': datetime.now() + timedelta(hours=12),
+                'expiry_time': datetime.datetime.now() + timedelta(hours=12),
                 'status': 'Claimed',
-                'created_at': datetime.now() - timedelta(hours=3),
+                'created_at': datetime.datetime.now() - timedelta(hours=3),
                 'claimed_by': 'Volunteer001',
                 'delivered_to': None,
                 'special_instructions': 'Best consumed fresh',
                 'food_category': 'Vegetarian'
-            },
-            {
-                'id': 'FD003',
-                'donor_name': 'Spice Garden Hotel',
-                'donor_phone': '+91-9876543212',
-                'donor_address': 'Gandhipuram, Coimbatore',
-                'donor_lat': 11.0183,
-                'donor_lng': 76.9725,
-                'food_type': 'Cooked Meals',
-                'quantity': '80 servings',
-                'description': 'Mixed vegetarian and non-vegetarian meals',
-                'expiry_time': datetime.now() + timedelta(hours=2),
-                'status': 'Available',
-                'created_at': datetime.now() - timedelta(minutes=30),
-                'claimed_by': None,
-                'delivered_to': None,
-                'special_instructions': 'Urgent pickup required',
-                'food_category': 'Mixed'
             }
         ]
         st.session_state.food_donations.extend(sample_donations)
@@ -561,36 +552,15 @@ def initialize_sample_data():
                 'location_lat': 11.0296,
                 'location_lng': 76.9378,
                 'requirements': 'Vegetarian meals preferred, serves elderly and children'
-            },
-            {
-                'id': 'ORG002',
-                'name': 'Street Children Shelter',
-                'contact_person': 'David Wilson',
-                'phone': '+91-9876543231',
-                'address': 'Saibaba Colony, Coimbatore',
-                'type': 'Shelter Home',
-                'beneficiaries': 80,
-                'location_lat': 11.0240,
-                'location_lng': 76.9350,
-                'requirements': 'All types of food accepted, urgent need for breakfast items'
             }
         ]
         st.session_state.organizations.extend(sample_orgs)
 
-# Initialize data
-initialize_sample_data()
-
-# Initialize the AI/DS system
-if 'foodbridge_ds' not in st.session_state:
-    with st.spinner("Initializing AI models and loading data..."):
-        st.session_state.foodbridge_ds = FoodBridgeDataScience()
-
-# Helper functions
 def calculate_distance(lat1, lng1, lat2, lng2):
     return geodesic((lat1, lng1), (lat2, lng2)).kilometers
 
 def get_urgency_color(expiry_time):
-    time_diff = expiry_time - datetime.now()
+    time_diff = expiry_time - datetime.datetime.now()
     if time_diff.total_seconds() < 3600:  # Less than 1 hour
         return "🔴"
     elif time_diff.total_seconds() < 7200:  # Less than 2 hours
@@ -599,471 +569,592 @@ def get_urgency_color(expiry_time):
         return "🟢"
 
 def format_time_remaining(expiry_time):
-    time_diff = expiry_time - datetime.now()
+    time_diff = expiry_time - datetime.datetime.now()
     if time_diff.total_seconds() < 0:
         return "⚠️ EXPIRED"
     hours = int(time_diff.total_seconds() // 3600)
     minutes = int((time_diff.total_seconds() % 3600) // 60)
     return f"{hours}h {minutes}m remaining"
 
-# App title and description
-st.markdown('<h1 class="main-header">🍲 FoodBridge - AI-Powered Food Rescue Platform</h1>', unsafe_allow_html=True)
-st.markdown("""
-**Reducing Food Waste | Fighting Hunger | Building Community | Powered by AI**
-
-FoodBridge combines operational excellence with advanced AI analytics to connect restaurants, grocery stores, 
-and individuals with surplus food to charitable organizations and volunteers who can distribute it to those in need.
-""")
-
-# User authentication simulation
-with st.sidebar:
-    st.title("🔑 User Portal")
-    user_type = st.selectbox("Login as:", ["Select User Type", "Restaurant/Donor", "Volunteer", "NGO/Organization", "Admin", "AI Analytics"])
+def main():
+    # Initialize session state and sample data
+    initialize_session_state()
+    initialize_sample_data()
     
-    if user_type != "Select User Type":
-        st.session_state.current_user_type = user_type
-        
-        if user_type == "Restaurant/Donor":
-            st.session_state.current_user = "Green Valley Restaurant"
-            st.success(f"✅ Logged in as: {st.session_state.current_user}")
-        elif user_type == "Volunteer":
-            st.session_state.current_user = "Rajesh Kumar"
-            st.success(f"✅ Logged in as: {st.session_state.current_user}")
-        elif user_type == "NGO/Organization":
-            st.session_state.current_user = "Hope Foundation"
-            st.success(f"✅ Logged in as: {st.session_state.current_user}")
-        elif user_type == "Admin":
-            st.session_state.current_user = "System Admin"
-            st.success(f"✅ Logged in as: {st.session_state.current_user}")
-        elif user_type == "AI Analytics":
-            st.session_state.current_user = "Data Scientist"
-            st.success(f"✅ Logged in as: {st.session_state.current_user}")
-
-# Navigation based on user type
-if st.session_state.current_user_type:
-    if st.session_state.current_user_type == "Restaurant/Donor":
-        pages = ["Dashboard", "Donate Food", "My Donations", "Analytics"]
-    elif st.session_state.current_user_type == "Volunteer":
-        pages = ["Dashboard", "Available Pickups", "My Deliveries", "Profile"]
-    elif st.session_state.current_user_type == "NGO/Organization":
-        pages = ["Dashboard", "Food Requests", "Received Donations", "Impact Report"]
-    elif st.session_state.current_user_type == "Admin":
-        pages = ["Dashboard", "All Donations", "Volunteers", "Organizations", "Analytics"]
-    elif st.session_state.current_user_type == "AI Analytics":
-        pages = ["📊 Overview & KPIs", "🔮 Predictive Analytics", "👥 Donor Segmentation", 
-                "🗺️ Geographic Intelligence", "📈 Time Series Analysis", "🔍 Anomaly Detection",
-                "🌐 Network Analysis", "🎯 Optimization Engine"]
-    else:
-        pages = ["Public Dashboard"]
+    st.markdown('<h1 class="main-header">🍲 FoodBridge AI Analytics Platform</h1>', unsafe_allow_html=True)
     
+    # User authentication simulation
     with st.sidebar:
-        st.markdown("---")
-        if st.session_state.current_user_type == "AI Analytics":
-            selected_page = st.selectbox("Choose Analysis Type", pages)
+        st.title("🔑 User Portal")
+        user_type = st.selectbox("Login as:", ["Select User Type", "Restaurant/Donor", "Volunteer", "NGO/Organization", "Admin"])
+        
+        if user_type != "Select User Type":
+            st.session_state.current_user_type = user_type
+            
+            if user_type == "Restaurant/Donor":
+                st.session_state.current_user = "Green Valley Restaurant"
+                st.success(f"✅ Logged in as: {st.session_state.current_user}")
+            elif user_type == "Volunteer":
+                st.session_state.current_user = "Rajesh Kumar"
+                st.success(f"✅ Logged in as: {st.session_state.current_user}")
+            elif user_type == "NGO/Organization":
+                st.session_state.current_user = "Hope Foundation"
+                st.success(f"✅ Logged in as: {st.session_state.current_user}")
+            elif user_type == "Admin":
+                st.session_state.current_user = "System Admin"
+                st.success(f"✅ Logged in as: {st.session_state.current_user}")
+    
+    # Initialize AI models for admin users
+    if st.session_state.current_user_type == "Admin" and st.session_state.foodbridge_ds is None:
+        with st.spinner("Initializing AI models and loading data..."):
+            st.session_state.foodbridge_ds = FoodBridgeDataScience()
+    
+    # Navigation based on user type
+    if st.session_state.current_user_type:
+        if st.session_state.current_user_type == "Restaurant/Donor":
+            pages = ["Dashboard", "Donate Food", "My Donations"]
+        elif st.session_state.current_user_type == "Volunteer":
+            pages = ["Dashboard", "Available Pickups", "My Deliveries", "Profile"]
+        elif st.session_state.current_user_type == "NGO/Organization":
+            pages = ["Dashboard", "Food Requests", "Received Donations", "Impact Report"]
+        elif st.session_state.current_user_type == "Admin":
+            pages = ["Dashboard", "🔮 Predictive Analytics", "👥 Donor Segmentation", 
+                    "🗺️ Geographic Intelligence", "📈 Time Series Analysis", "🔍 Anomaly Detection",
+                    "🌐 Network Analysis", "🎯 Optimization Engine", "All Donations", "Volunteers", "Organizations"]
         else:
+            pages = ["Public Dashboard"]
+        
+        with st.sidebar:
+            st.markdown("---")
             selected_page = st.radio("Navigate to:", pages)
-else:
-    selected_page = "Public Dashboard"
-
-# Get the FoodBridge DS instance
-fb_ds = st.session_state.foodbridge_ds
-
-# AI Analytics Pages
-if st.session_state.current_user_type == "AI Analytics":
+    else:
+        selected_page = "Public Dashboard"
     
-    if selected_page == "📊 Overview & KPIs":
-        st.header("📊 Advanced Analytics Overview")
-        
-        # Key metrics
-        col1, col2, col3, col4 = st.columns(4)
-        
-        total_donations = len(fb_ds.donations_data)
-        success_rate = fb_ds.donations_data['pickup_success'].mean()
-        total_food_rescued = fb_ds.donations_data['quantity_kg'].sum()
-        people_fed = fb_ds.donations_data['people_fed_estimate'].sum()
-        
-        with col1:
-            st.markdown(f"""
-            <div class="metric-card">
-                <h3>🎯 Total Donations</h3>
-                <h2>{total_donations:,}</h2>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        with col2:
-            st.markdown(f"""
-            <div class="metric-card">
-                <h3>✅ Success Rate</h3>
-                <h2>{success_rate:.1%}</h2>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        with col3:
-            st.markdown(f"""
-            <div class="metric-card">
-                <h3>🍽️ Food Rescued</h3>
-                <h2>{total_food_rescued:,.0f} kg</h2>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        with col4:
-            st.markdown(f"""
-            <div class="metric-card">
-                <h3>👥 People Fed</h3>
-                <h2>{people_fed:,}</h2>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        # Advanced visualizations
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.subheader("📈 Daily Food Rescue Trends")
-            daily_trends = fb_ds.donations_data.groupby(fb_ds.donations_data['date'].dt.date)['quantity_kg'].sum().reset_index()
-            daily_trends.columns = ['Date', 'Quantity']
-            
-            fig = px.line(daily_trends, x='Date', y='Quantity', title="Daily Food Rescue Volume")
-            fig.add_scatter(x=daily_trends['Date'], y=daily_trends['Quantity'], mode='markers', name='Daily Points')
-            st.plotly_chart(fig, use_container_width=True)
-        
-        with col2:
-            st.subheader("🎯 Success Rate by Food Type")
-            success_by_type = fb_ds.donations_data.groupby('food_type').agg({
-                'pickup_success': 'mean',
-                'quantity_kg': 'count'
-            }).reset_index()
-            success_by_type.columns = ['Food Type', 'Success Rate', 'Count']
-            
-            fig = px.bar(success_by_type, x='Food Type', y='Success Rate',
-                        title="Pickup Success Rate by Food Category",
-                        color='Success Rate', color_continuous_scale='RdYlGn')
-            fig.update_layout(xaxis_tickangle=-45)
-            st.plotly_chart(fig, use_container_width=True)
-    
+    # Page routing
+    if selected_page in ["Public Dashboard", "Dashboard"]:
+        show_dashboard()
+    elif selected_page == "Donate Food":
+        show_donate_food()
+    elif selected_page == "My Donations":
+        show_my_donations()
+    elif selected_page == "Available Pickups":
+        show_available_pickups()
+    elif selected_page == "My Deliveries":
+        show_my_deliveries()
+    elif selected_page == "Profile":
+        show_profile()
+    elif selected_page == "Food Requests":
+        show_food_requests()
+    elif selected_page == "Impact Report":
+        show_impact_report()
+    elif selected_page == "All Donations":
+        show_all_donations()
+    elif selected_page == "Volunteers":
+        show_volunteers()
+    elif selected_page == "Organizations":
+        show_organizations()
     elif selected_page == "🔮 Predictive Analytics":
-        st.header("🔮 AI-Powered Predictive Analytics")
-        
-        # Demand prediction
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.subheader("📊 Food Demand Prediction")
-            
-            temp = st.slider("Temperature (°C)", 10, 40, 25)
-            rainfall = st.slider("Rainfall (mm)", 0.0, 20.0, 2.0)
-            humidity = st.slider("Humidity (%)", 40, 90, 70)
-            is_festival = st.checkbox("Festival Day")
-            is_holiday = st.checkbox("Public Holiday")
-            day_of_week = st.selectbox("Day of Week", 
-                                      ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'])
-            month = st.selectbox("Month", range(1, 13))
-            
-            day_mapping = {'Monday': 0, 'Tuesday': 1, 'Wednesday': 2, 'Thursday': 3,
-                          'Friday': 4, 'Saturday': 5, 'Sunday': 6}
-            day_num = day_mapping[day_of_week]
-            
-            features = np.array([[temp, rainfall, humidity, is_festival, is_holiday, day_num, month]])
-            
-            try:
-                prediction = fb_ds.demand_model.predict(features)[0]
-                
-                st.markdown(f"""
-                <div class="prediction-card">
-                    <h3>🎯 Predicted Daily Demand</h3>
-                    <h2>{prediction:.1f} kg</h2>
-                </div>
-                """, unsafe_allow_html=True)
-                
-                st.info(f"Expected range: {prediction*0.8:.1f} - {prediction*1.2:.1f} kg")
-                
-            except Exception as e:
-                st.error("Error making prediction. Please check inputs.")
-        
-        with col2:
-            st.subheader("✅ Pickup Success Probability")
-            
-            quantity = st.number_input("Quantity (kg)", 1.0, 100.0, 10.0)
-            hours_expire = st.number_input("Hours to Expire", 1.0, 168.0, 24.0)
-            donor_size = st.slider("Donor Size Score", 1.0, 10.0, 5.0)
-            sustainability = st.slider("Sustainability Score", 1.0, 10.0, 5.0)
-            hour_posted = st.slider("Hour Posted", 0, 23, 12)
-            
-            food_type_map = {'Prepared Food': 0, 'Bakery Items': 1, 'Fruits': 2, 
-                            'Vegetables': 3, 'Dairy': 4, 'Packaged Food': 5, 'Beverages': 6}
-            food_type = st.selectbox("Food Type", list(food_type_map.keys()))
-            
-            donor_type_map = {'Restaurant': 0, 'Bakery': 1, 'Grocery Store': 2, 
-                             'Catering': 3, 'Hotel': 4, 'Cafe': 5}
-            donor_type = st.selectbox("Donor Type", list(donor_type_map.keys()))
-            
-            success_features = np.array([[quantity, hours_expire, donor_size, sustainability,
-                                        temp, rainfall, humidity, day_num, hour_posted,
-                                        food_type_map[food_type], donor_type_map[donor_type]]])
-            
-            try:
-                success_prob = fb_ds.success_model.predict_proba(success_features)[0][1]
-                
-                st.markdown(f"""
-                <div class="prediction-card">
-                    <h3>📈 Success Probability</h3>
-                    <h2>{success_prob:.1%}</h2>
-                </div>
-                """, unsafe_allow_html=True)
-                
-                if success_prob > 0.8:
-                    st.success("🟢 High success probability - Recommended for posting!")
-                elif success_prob > 0.6:
-                    st.warning("🟡 Moderate success probability - Consider optimizing timing")
-                else:
-                    st.error("🔴 Low success probability - Review posting strategy")
-                    
-            except Exception as e:
-                st.error("Error making success prediction.")
-    
+        show_predictive_analytics()
     elif selected_page == "👥 Donor Segmentation":
-        st.header("👥 AI-Powered Donor Segmentation")
-        
-        clusters = fb_ds.cluster_model['clusters']
-        cluster_data = fb_ds.donors_data.copy()
-        cluster_data['Cluster'] = clusters
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            st.subheader("🎯 Donor Clusters")
-            
-            fig = px.scatter(cluster_data, x='size_score', y='sustainability_score',
-                            color='Cluster', hover_data=['type', 'avg_daily_footfall'],
-                            title="Donor Segmentation: Size vs Sustainability")
-            st.plotly_chart(fig, use_container_width=True)
-        
-        with col2:
-            st.subheader("📊 Cluster Characteristics")
-            
-            cluster_stats = cluster_data.groupby('Cluster').agg({
-                'size_score': 'mean',
-                'sustainability_score': 'mean',
-                'avg_daily_footfall': 'mean',
-                'years_operating': 'mean'
-            }).round(2)
-            
-            st.dataframe(cluster_stats)
-    
+        show_donor_segmentation()
     elif selected_page == "🗺️ Geographic Intelligence":
-        st.header("🗺️ Geographic Intelligence & Hotspot Analysis")
-        
-        center_lat = fb_ds.donations_data['latitude'].mean()
-        center_lon = fb_ds.donations_data['longitude'].mean()
-        
-        m = folium.Map(location=[center_lat, center_lon], zoom_start=10)
-        
-        heat_data = [[row['latitude'], row['longitude'], row['quantity_kg']] 
-                     for idx, row in fb_ds.donations_data.iterrows()]
-        
-        HeatMap(heat_data).add_to(m)
-        
-        colors = ['red', 'blue', 'green', 'purple', 'orange']
-        clusters = fb_ds.cluster_model['clusters']
-        
-        for idx, row in fb_ds.donors_data.iterrows():
-            cluster_color = colors[clusters[idx] % len(colors)]
-            
-            folium.CircleMarker(
-                location=[row['latitude'], row['longitude']],
-                radius=5,
-                popup=f"Type: {row['type']}<br>Size: {row['size_score']}<br>Cluster: {clusters[idx]}",
-                color=cluster_color,
-                fillColor=cluster_color,
-                fillOpacity=0.6
-            ).add_to(m)
-        
-        st.subheader("🌡️ Food Waste Heat Map & Donor Clusters")
-        st_folium(m, width=700, height=500)
+        show_geographic_intelligence()
+    elif selected_page == "📈 Time Series Analysis":
+        show_time_series_analysis()
+    elif selected_page == "🔍 Anomaly Detection":
+        show_anomaly_detection()
+    elif selected_page == "🌐 Network Analysis":
+        show_network_analysis()
+    elif selected_page == "🎯 Optimization Engine":
+        show_optimization_engine()
+    
+    # Add footer and sidebar info
+    show_footer()
+    show_sidebar_info()
 
-# Regular operational pages
-else:
-    if selected_page == "Public Dashboard" or selected_page == "Dashboard":
-        # Key metrics
-        available_donations = len([d for d in st.session_state.food_donations if d['status'] == 'Available'])
-        total_served_estimate = sum([int(d['quantity'].split()[0]) if d['quantity'].split()[0].isdigit() else 0 
-                                   for d in st.session_state.food_donations if d['status'] == 'Delivered'])
-        active_volunteers = len([v for v in st.session_state.volunteers if v['availability'] == 'Available'])
-        
-        # Display metrics
-        col1, col2, col3, col4 = st.columns(4)
-        
-        with col1:
-            st.markdown(f"""
-            <div class="metric-card">
-                <h3>🍽️</h3>
-                <h2>{available_donations}</h2>
-                <p>Food Available</p>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        with col2:
-            st.markdown(f"""
-            <div class="metric-card">
-                <h3>👥</h3>
-                <h2>{total_served_estimate + 234}</h2>
-                <p>People Fed Today</p>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        with col3:
-            st.markdown(f"""
-            <div class="metric-card">
-                <h3>🚗</h3>
-                <h2>{active_volunteers}</h2>
-                <p>Active Volunteers</p>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        with col4:
-            st.markdown(f"""
-            <div class="metric-card">
-                <h3>🌱</h3>
-                <h2>{len(st.session_state.food_donations) * 2.5:.1f}kg</h2>
-                <p>Food Rescued</p>
-            </div>
-            """, unsafe_allow_html=True)
-        
-        # Real-time food availability map
-        st.subheader("🗺️ Real-time Food Availability Map")
-        
-        m = folium.Map(location=[11.0168, 76.9558], zoom_start=12)
-        
-        for donation in st.session_state.food_donations:
-            if donation['status'] == 'Available':
-                urgency = get_urgency_color(donation['expiry_time'])
-                
-                popup_text = f"""
-                <b>{donation['donor_name']}</b><br>
-                📞 {donation['donor_phone']}<br>
-                🍽️ {donation['food_type']}<br>
-                📦 {donation['quantity']}<br>
-                ⏰ {format_time_remaining(donation['expiry_time'])}<br>
-                📝 {donation['description']}
-                """
-                
-                color = 'red' if urgency == '🔴' else 'orange' if urgency == '🟡' else 'green'
-                
-                folium.Marker(
-                    location=[donation['donor_lat'], donation['donor_lng']],
-                    popup=folium.Popup(popup_text, max_width=300),
-                    icon=folium.Icon(color=color, icon='cutlery', prefix='fa')
-                ).add_to(m)
-        
-        for org in st.session_state.organizations:
+def show_dashboard():
+    """Show main dashboard with key metrics"""
+    
+    # Key metrics
+    available_donations = len([d for d in st.session_state.food_donations if d['status'] == 'Available'])
+    total_served_estimate = sum([int(d['quantity'].split()[0]) if d['quantity'].split()[0].isdigit() else 0 
+                               for d in st.session_state.food_donations if d['status'] == 'Delivered'])
+    active_volunteers = len([v for v in st.session_state.volunteers if v['availability'] == 'Available'])
+    
+    # Display metrics
+    col1, col2, col3, col4 = st.columns(4)
+    
+    with col1:
+        st.markdown(f"""
+        <div class="metric-card">
+            <h3>🍽️</h3>
+            <h2>{available_donations}</h2>
+            <p>Food Available</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col2:
+        st.markdown(f"""
+        <div class="metric-card">
+            <h3>👥</h3>
+            <h2>{total_served_estimate + 234}</h2>
+            <p>People Fed Today</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col3:
+        st.markdown(f"""
+        <div class="metric-card">
+            <h3>🚗</h3>
+            <h2>{active_volunteers}</h2>
+            <p>Active Volunteers</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    with col4:
+        st.markdown(f"""
+        <div class="metric-card">
+            <h3>🌱</h3>
+            <h2>{len(st.session_state.food_donations) * 2.5:.1f}kg</h2>
+            <p>Food Rescued</p>
+        </div>
+        """, unsafe_allow_html=True)
+    
+    # Real-time food availability map
+    st.subheader("🗺️ Real-time Food Availability Map")
+    
+    # Create map centered on Coimbatore
+    m = folium.Map(location=[11.0168, 76.9558], zoom_start=12)
+    
+    # Add markers for available food donations
+    for donation in st.session_state.food_donations:
+        if donation['status'] == 'Available':
+            urgency = get_urgency_color(donation['expiry_time'])
+            
             popup_text = f"""
-            <b>{org['name']}</b><br>
-            👤 {org['contact_person']}<br>
-            📞 {org['phone']}<br>
-            🏢 {org['type']}<br>
-            👥 Serves {org['beneficiaries']} people<br>
-            📝 {org['requirements']}
+            <b>{donation['donor_name']}</b><br>
+            📞 {donation['donor_phone']}<br>
+            🍽️ {donation['food_type']}<br>
+            📦 {donation['quantity']}<br>
+            ⏰ {format_time_remaining(donation['expiry_time'])}<br>
+            📝 {donation['description']}
             """
             
+            color = 'red' if urgency == '🔴' else 'orange' if urgency == '🟡' else 'green'
+            
             folium.Marker(
-                location=[org['location_lat'], org['location_lng']],
+                location=[donation['donor_lat'], donation['donor_lng']],
                 popup=folium.Popup(popup_text, max_width=300),
-                icon=folium.Icon(color='blue', icon='home', prefix='fa')
+                icon=folium.Icon(color=color, icon='cutlery', prefix='fa')
             ).add_to(m)
-        
-        map_data = st_folium(m, width=700, height=500)
     
-    elif selected_page == "Donate Food":
-        st.header("🍽️ Donate Food")
+    # Add markers for organizations
+    for org in st.session_state.organizations:
+        popup_text = f"""
+        <b>{org['name']}</b><br>
+        👤 {org['contact_person']}<br>
+        📞 {org['phone']}<br>
+        🏢 {org['type']}<br>
+        👥 Serves {org['beneficiaries']} people<br>
+        📝 {org['requirements']}
+        """
         
-        with st.form("food_donation_form"):
-            st.subheader("Food Donation Details")
+        folium.Marker(
+            location=[org['location_lat'], org['location_lng']],
+            popup=folium.Popup(popup_text, max_width=300),
+            icon=folium.Icon(color='blue', icon='home', prefix='fa')
+        ).add_to(m)
+    
+    # Display map
+    map_data = st_folium(m, width=700, height=500)
+    
+    # Urgent pickups alert
+    urgent_donations = [d for d in st.session_state.food_donations 
+                       if d['status'] == 'Available' and 
+                       (d['expiry_time'] - datetime.datetime.now()).total_seconds() < 3600]
+    
+    if urgent_donations:
+        st.markdown("### 🚨 Urgent Pickups Required!")
+        for donation in urgent_donations:
+            st.markdown(f"""
+            <div class="alert-urgent">
+                <strong>{donation['donor_name']}</strong> - {donation['food_type']} ({donation['quantity']})<br>
+                📍 {donation['donor_address']}<br>
+                ⏰ <strong>{format_time_remaining(donation['expiry_time'])}</strong><br>
+                📝 {donation['special_instructions']}
+            </div>
+            """, unsafe_allow_html=True)
+
+def show_donate_food():
+    """Show food donation form"""
+    st.header("🍽️ Donate Food")
+    
+    with st.form("food_donation_form"):
+        st.subheader("Food Donation Details")
+        
+        col1, col2 = st.columns(2)
+        
+        with col1:
+            donor_name = st.text_input("Restaurant/Organization Name*", value="Green Valley Restaurant")
+            donor_phone = st.text_input("Contact Phone*", value="+91-9876543210")
+            donor_address = st.text_area("Pickup Address*", value="Race Course Road, Coimbatore")
             
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                donor_name = st.text_input("Restaurant/Organization Name*", value="Green Valley Restaurant")
-                donor_phone = st.text_input("Contact Phone*", value="+91-9876543210")
-                donor_address = st.text_area("Pickup Address*", value="Race Course Road, Coimbatore")
+        with col2:
+            food_type = st.selectbox("Food Type*", 
+                                   ["Cooked Meals", "Raw Ingredients", "Bakery Items", 
+                                    "Fruits & Vegetables", "Packaged Food", "Dairy Products"])
+            quantity = st.text_input("Quantity*", placeholder="e.g., 50 servings, 10kg, 20 pieces")
+            food_category = st.selectbox("Food Category*", ["Vegetarian", "Non-Vegetarian", "Vegan", "Mixed"])
+        
+        description = st.text_area("Food Description*", 
+                                 placeholder="Describe the food items in detail...")
+        
+        col3, col4 = st.columns(2)
+        with col3:
+            pickup_date = st.date_input("Pickup Date*", value=datetime.datetime.now().date())
+            pickup_time = st.time_input("Pickup Time*", value=time(12, 0))
+        
+        with col4:
+            expiry_date = st.date_input("Food Expiry Date*", value=datetime.datetime.now().date())
+            expiry_time = st.time_input("Food Expiry Time*", value=time(18, 0))
+        
+        special_instructions = st.text_area("Special Instructions", 
+                                          placeholder="Storage requirements, allergen information, etc.")
+        
+        # Location selection
+        st.subheader("📍 Pickup Location")
+        location_option = st.radio("How would you like to set the location?", 
+                                 ["Use default location", "Enter coordinates"])
+        
+        if location_option == "Use default location":
+            pickup_lat, pickup_lng = 11.0168, 76.9558
+        else:
+            col5, col6 = st.columns(2)
+            with col5:
+                pickup_lat = st.number_input("Latitude", value=11.0168, format="%.6f")
+            with col6:
+                pickup_lng = st.number_input("Longitude", value=76.9558, format="%.6f")
+        
+        submitted = st.form_submit_button("🚀 Submit Food Donation", type="primary")
+        
+        if submitted:
+            if all([donor_name, donor_phone, donor_address, food_type, quantity, description]):
+                donation_id = f"FD{len(st.session_state.food_donations) + 1:03d}"
+                expiry_datetime = datetime.datetime.combine(expiry_date, expiry_time)
                 
-            with col2:
-                food_type = st.selectbox("Food Type*", 
-                                       ["Cooked Meals", "Raw Ingredients", "Bakery Items", 
-                                        "Fruits & Vegetables", "Packaged Food", "Dairy Products"])
-                quantity = st.text_input("Quantity*", placeholder="e.g., 50 servings, 10kg, 20 pieces")
-                food_category = st.selectbox("Food Category*", ["Vegetarian", "Non-Vegetarian", "Vegan", "Mixed"])
-            
-            description = st.text_area("Food Description*", 
-                                     placeholder="Describe the food items in detail...")
-            
-            col3, col4 = st.columns(2)
-            with col3:
-                pickup_date = st.date_input("Pickup Date*", value=datetime.now().date())
-                pickup_time = st.time_input("Pickup Time*", value=time(12, 0))
-            
-            with col4:
-                expiry_date = st.date_input("Food Expiry Date*", value=datetime.now().date())
-                expiry_time = st.time_input("Food Expiry Time*", value=time(18, 0))
-            
-            special_instructions = st.text_area("Special Instructions", 
-                                              placeholder="Storage requirements, allergen information, etc.")
-            
-            submitted = st.form_submit_button("🚀 Submit Food Donation", type="primary")
-            
-            if submitted:
-                if all([donor_name, donor_phone, donor_address, food_type, quantity, description]):
-                    donation_id = f"FD{len(st.session_state.food_donations) + 1:03d}"
-                    expiry_datetime = datetime.combine(expiry_date, expiry_time)
-                    
-                    new_donation = {
-                        'id': donation_id,
-                        'donor_name': donor_name,
-                        'donor_phone': donor_phone,
-                        'donor_address': donor_address,
-                        'donor_lat': 11.0168,
-                        'donor_lng': 76.9558,
-                        'food_type': food_type,
-                        'quantity': quantity,
-                        'description': description,
-                        'expiry_time': expiry_datetime,
-                        'status': 'Available',
-                        'created_at': datetime.now(),
-                        'claimed_by': None,
-                        'delivered_to': None,
-                        'special_instructions': special_instructions,
-                        'food_category': food_category
-                    }
-                    
-                    st.session_state.food_donations.append(new_donation)
-                    st.success(f"✅ Food donation submitted successfully! Donation ID: {donation_id}")
-                    st.balloons()
-                else:
-                    st.error("Please fill in all required fields marked with *")
+                new_donation = {
+                    'id': donation_id,
+                    'donor_name': donor_name,
+                    'donor_phone': donor_phone,
+                    'donor_address': donor_address,
+                    'donor_lat': pickup_lat,
+                    'donor_lng': pickup_lng,
+                    'food_type': food_type,
+                    'quantity': quantity,
+                    'description': description,
+                    'expiry_time': expiry_datetime,
+                    'status': 'Available',
+                    'created_at': datetime.datetime.now(),
+                    'claimed_by': None,
+                    'delivered_to': None,
+                    'special_instructions': special_instructions,
+                    'food_category': food_category
+                }
+                
+                st.session_state.food_donations.append(new_donation)
+                
+                st.success(f"✅ Food donation submitted successfully! Donation ID: {donation_id}")
+                st.balloons()
+            else:
+                st.error("Please fill in all required fields marked with *")
 
-# Footer
-st.markdown("---")
-st.markdown("""
-### 🤝 About FoodBridge - AI-Powered Food Rescue
+def show_my_donations():
+    """Show donor's donations"""
+    st.header("📦 My Food Donations")
+    
+    donor_donations = [d for d in st.session_state.food_donations 
+                      if d['donor_name'] == st.session_state.current_user]
+    
+    if not donor_donations:
+        st.info("🍽️ You haven't made any food donations yet. Click on 'Donate Food' to get started!")
+    else:
+        st.success(f"📊 You have made {len(donor_donations)} food donations")
+        
+        for donation in sorted(donor_donations, key=lambda x: x['created_at'], reverse=True):
+            status_class = f"status-{donation['status'].lower()}"
+            urgency = get_urgency_color(donation['expiry_time'])
+            time_remaining = format_time_remaining(donation['expiry_time'])
+            
+            st.markdown(f"""
+            <div class="food-card">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <h4>{urgency} {donation['food_type']} - {donation['quantity']}</h4>
+                    <span class="{status_class}">{donation['status'].upper()}</span>
+                </div>
+                
+                <div style="margin: 10px 0;">
+                    <strong>🆔 Donation ID:</strong> {donation['id']}<br>
+                    <strong>📅 Created:</strong> {donation['created_at'].strftime('%Y-%m-%d %H:%M')}<br>
+                    <strong>⏰ Time Remaining:</strong> {time_remaining}<br>
+                    <strong>📝 Description:</strong> {donation['description']}<br>
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
 
-**FoodBridge** combines operational excellence with cutting-edge AI to create the most efficient food rescue platform. 
-Our advanced analytics and machine learning capabilities optimize every aspect of food recovery.
+def show_available_pickups():
+    """Show available pickups for volunteers"""
+    st.header("🚗 Available Food Pickups")
+    
+    available_donations = [d for d in st.session_state.food_donations if d['status'] == 'Available']
+    
+    if not available_donations:
+        st.info("🎉 Great! No food pickups available right now. All food has been claimed!")
+    else:
+        st.success(f"📋 {len(available_donations)} food donations available for pickup")
+        
+        for donation in available_donations:
+            urgency = get_urgency_color(donation['expiry_time'])
+            time_remaining = format_time_remaining(donation['expiry_time'])
+            
+            st.markdown(f"""
+            <div class="food-card">
+                <div style="display: flex; justify-content: space-between; align-items: center;">
+                    <h4>{urgency} {donation['donor_name']} - {donation['food_type']}</h4>
+                    <span class="status-available">AVAILABLE</span>
+                </div>
+                
+                <div style="margin: 10px 0;">
+                    <strong>📦 Quantity:</strong> {donation['quantity']}<br>
+                    <strong>📍 Location:</strong> {donation['donor_address']}<br>
+                    <strong>⏰ Time Remaining:</strong> {time_remaining}<br>
+                    <strong>📝 Description:</strong> {donation['description']}
+                </div>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            if st.button(f"🚗 Claim Pickup", key=f"claim_{donation['id']}"):
+                for i, d in enumerate(st.session_state.food_donations):
+                    if d['id'] == donation['id']:
+                        st.session_state.food_donations[i]['status'] = 'Claimed'
+                        st.session_state.food_donations[i]['claimed_by'] = 'VOL001'
+                        break
+                
+                st.success(f"✅ Pickup claimed! Contact {donation['donor_name']} at {donation['donor_phone']}")
+                st.rerun()
 
-**AI-Powered Features:**
-- 🔮 Predictive demand forecasting
-- 📊 Real-time success probability analysis  
-- 👥 Intelligent donor segmentation
-- 🗺️ Geographic hotspot identification
-- 🔍 Anomaly detection for quality assurance
-- 🎯 Route and resource optimization
+def show_my_deliveries():
+    """Show volunteer's delivery history"""
+    st.header("🚚 My Delivery History")
+    
+    st.metric("Total Deliveries", "25")
+    st.info("Delivery history would be displayed here based on volunteer's activity")
 
-**Traditional Features:**
-- 📱 Real-time food availability tracking
-- 🗺️ GPS-based location services
-- 👥 Comprehensive volunteer management
-- 📊 Impact analytics and reporting
-- 🏢 Multi-stakeholder platform integration
+def show_profile():
+    """Show volunteer profile"""
+    st.header("👤 Volunteer Profile")
+    
+    st.info("Profile management interface for volunteers")
 
-Together, we create a world where AI and human compassion work hand-in-hand to eliminate food waste and hunger!
+def show_food_requests():
+    """Show food request interface for NGOs"""
+    st.header("🏢 Request Food Donations")
+    
+    st.info("NGO food request interface would be implemented here")
 
----
-*Built with ❤️ using Streamlit & Advanced AI | Contact: support@foodbridge.org*
-""")
+def show_impact_report():
+    """Show impact report for NGOs"""
+    st.header("📈 Impact Report")
+    
+    st.info("Impact reporting dashboard for NGOs")
+
+def show_all_donations():
+    """Show all donations for admin"""
+    st.header("📊 All Donations Overview")
+    
+    if st.session_state.food_donations:
+        df = pd.DataFrame(st.session_state.food_donations)
+        st.dataframe(df)
+    else:
+        st.info("No donations to display")
+
+def show_volunteers():
+    """Show volunteer management"""
+    st.header("🚗 Volunteer Management")
+    
+    if st.session_state.volunteers:
+        df = pd.DataFrame(st.session_state.volunteers)
+        st.dataframe(df)
+    else:
+        st.info("No volunteers registered")
+
+def show_organizations():
+    """Show organization management"""
+    st.header("🏢 Organization Management")
+    
+    if st.session_state.organizations:
+        df = pd.DataFrame(st.session_state.organizations)
+        st.dataframe(df)
+    else:
+        st.info("No organizations registered")
+
+def show_predictive_analytics():
+    """Show AI predictive analytics"""
+    if not st.session_state.foodbridge_ds:
+        st.error("AI models not initialized. Please refresh the page.")
+        return
+    
+    fb_ds = st.session_state.foodbridge_ds
+    
+    st.header("🔮 AI-Powered Predictive Analytics")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.subheader("📊 Food Demand Prediction")
+        
+        temp = st.slider("Temperature (°C)", 10, 40, 25)
+        rainfall = st.slider("Rainfall (mm)", 0.0, 20.0, 2.0)
+        humidity = st.slider("Humidity (%)", 40, 90, 70)
+        is_festival = st.checkbox("Festival Day")
+        is_holiday = st.checkbox("Public Holiday")
+        day_of_week = st.selectbox("Day of Week", 
+                                  ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 
+                                   'Friday', 'Saturday', 'Sunday'])
+        month = st.selectbox("Month", range(1, 13))
+        
+        day_mapping = {'Monday': 0, 'Tuesday': 1, 'Wednesday': 2, 'Thursday': 3,
+                      'Friday': 4, 'Saturday': 5, 'Sunday': 6}
+        day_num = day_mapping[day_of_week]
+        
+        features = np.array([[temp, rainfall, humidity, is_festival, is_holiday, day_num, month]])
+        
+        try:
+            prediction = fb_ds.demand_model.predict(features)[0]
+            
+            st.markdown(f"""
+            <div class="prediction-card">
+                <h3>🎯 Predicted Daily Demand</h3>
+                <h2>{prediction:.1f} kg</h2>
+            </div>
+            """, unsafe_allow_html=True)
+            
+        except Exception as e:
+            st.error("Error making prediction. Please check inputs.")
+
+def show_donor_segmentation():
+    """Show donor segmentation analysis"""
+    if not st.session_state.foodbridge_ds:
+        st.error("AI models not initialized. Please refresh the page.")
+        return
+    
+    fb_ds = st.session_state.foodbridge_ds
+    
+    st.header("👥 AI-Powered Donor Segmentation")
+    
+    clusters = fb_ds.cluster_model['clusters']
+    cluster_data = fb_ds.donors_data.copy()
+    cluster_data['Cluster'] = clusters
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.subheader("🎯 Donor Clusters")
+        
+        fig = px.scatter(cluster_data, x='size_score', y='sustainability_score',
+                        color='Cluster', hover_data=['type', 'avg_daily_footfall'],
+                        title="Donor Segmentation: Size vs Sustainability")
+        st.plotly_chart(fig, use_container_width=True)
+    
+    with col2:
+        st.subheader("📊 Cluster Characteristics")
+        
+        cluster_stats = cluster_data.groupby('Cluster').agg({
+            'size_score': 'mean',
+            'sustainability_score': 'mean',
+            'avg_daily_footfall': 'mean',
+            'years_operating': 'mean'
+        }).round(2)
+        
+        st.dataframe(cluster_stats)
+
+def show_geographic_intelligence():
+    """Show geographic intelligence"""
+    if not st.session_state.foodbridge_ds:
+        st.error("AI models not initialized. Please refresh the page.")
+        return
+    
+    st.header("🗺️ Geographic Intelligence & Hotspot Analysis")
+    st.info("Geographic analytics with AI-powered insights")
+
+def show_time_series_analysis():
+    """Show time series analysis"""
+    if not st.session_state.foodbridge_ds:
+        st.error("AI models not initialized. Please refresh the page.")
+        return
+    
+    st.header("📈 Advanced Time Series Analysis & Forecasting")
+    st.info("Time series forecasting and trend analysis")
+
+def show_anomaly_detection():
+    """Show anomaly detection"""
+    if not st.session_state.foodbridge_ds:
+        st.error("AI models not initialized. Please refresh the page.")
+        return
+    
+    st.header("🔍 AI-Powered Anomaly Detection")
+    st.info("Anomaly detection in food donation patterns")
+
+def show_network_analysis():
+    """Show network analysis"""
+    if not st.session_state.foodbridge_ds:
+        st.error("AI models not initialized. Please refresh the page.")
+        return
+    
+    st.header("🌐 Social Network Analysis")
+    st.info("Network analysis of donors, volunteers, and organizations")
+
+def show_optimization_engine():
+    """Show optimization recommendations"""
+    if not st.session_state.foodbridge_ds:
+        st.error("AI models not initialized. Please refresh the page.")
+        return
+    
+    st.header("🎯 AI-Powered Optimization Engine")
+    st.info("Route optimization and resource allocation recommendations")
+
+def show_footer():
+    """Show app footer"""
+    st.markdown("---")
+    st.markdown("""
+    ### 🤝 About FoodBridge
+
+    **FoodBridge** is a comprehensive AI-powered food rescue platform that connects the dots between food waste and hunger. 
+    Our mission is to create a sustainable ecosystem where surplus food reaches those who need it most.
+
+    **Key Features:**
+    - 🔮 AI-powered predictive analytics and demand forecasting
+    - 📱 Real-time food availability tracking
+    - 🗺️ GPS-based location services for efficient logistics
+    - 👥 Volunteer network management with optimization
+    - 📊 Advanced impact analytics and reporting
+    - 🏢 Multi-stakeholder platform (Donors, Volunteers, NGOs)
+    - ⚡ Urgent pickup alerts and notifications
+    - 🤖 Machine learning for donor segmentation and anomaly detection
+
+    Together, we can create a world where no food goes to waste and no one goes hungry!
+    """)
+
+def show_sidebar_info():
+    """Show sidebar information"""
+    if st.session_state.current_user_type:
+        st.sidebar.markdown("---")
+        st.sidebar.markdown("### 📊 Today's Stats")
+        st.sidebar.markdown(f"""
+        🍽️ **Available Now:** {len([d for d in st.session_state.food_donations if d['status'] == 'Available'])} donations  
+        🚗 **Active Volunteers:** {len([v for v in st.session_state.volunteers if v['availability'] == 'Available'])}  
+        🏢 **Partner Organizations:** {len(st.session_state.organizations)}  
+        ⚡ **Urgent Pickups:** {len([d for d in st.session_state.food_donations if d['status'] == 'Available' and (d['expiry_time'] - datetime.datetime.now()).total_seconds() < 3600])}
+        """)
+
+if __name__ == "__main__":
+    main()
