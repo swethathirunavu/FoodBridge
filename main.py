@@ -6,1134 +6,1146 @@ import seaborn as sns
 import plotly.express as px
 import plotly.graph_objects as go
 from plotly.subplots import make_subplots
-from datetime import datetime, timedelta
-import time as tm
 import folium
 from streamlit_folium import st_folium
-import random
-from geopy.distance import geodesic
-from sklearn.model_selection import train_test_split
-from sklearn.ensemble import RandomForestRegressor, RandomForestClassifier
-from sklearn.linear_model import LinearRegression
-from sklearn.metrics import mean_absolute_error, r2_score, accuracy_score, precision_score, recall_score, f1_score, confusion_matrix
+from sklearn.ensemble import RandomForestRegressor, IsolationForest
+from sklearn.cluster import KMeans, DBSCAN
 from sklearn.preprocessing import StandardScaler, LabelEncoder
-from sklearn.cluster import KMeans
-from scipy.stats import chi2_contingency, f_oneway
+from sklearn.model_selection import train_test_split
+from sklearn.metrics import mean_absolute_error, r2_score, classification_report
+from sklearn.linear_model import LinearRegression
+from sklearn.tree import DecisionTreeClassifier
+import xgboost as xgb
 import warnings
+import datetime
+from datetime import timedelta
+import hashlib
+import time
+from scipy import stats
+from statsmodels.tsa.seasonal import seasonal_decompose
+from statsmodels.tsa.arima.model import ARIMA
+import networkx as nx
+import joblib
+import os
+
 warnings.filterwarnings('ignore')
 
-# Set page configuration
+# Configure page
 st.set_page_config(
-    page_title="FoodBridge Analytics - Data Science Platform",
-    page_icon="📊",
-    layout="wide"
+    page_title="FoodBridge - AI-Powered Food Rescue Analytics",
+    page_icon="🍲",
+    layout="wide",
+    initial_sidebar_state="expanded"
 )
 
-# Custom CSS for better appearance
+# Custom CSS
 st.markdown("""
 <style>
-    .main {
-        padding: 1rem 1rem;
+    .main-header {
+        font-size: 3rem;
+        color: #2E8B57;
+        text-align: center;
+        margin-bottom: 2rem;
     }
     .metric-card {
         background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
-        padding: 1.5rem;
+        padding: 1rem;
         border-radius: 10px;
         color: white;
         text-align: center;
-        margin: 10px 0;
     }
-    .ds-card {
+    .prediction-card {
         background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%);
-        padding: 1.5rem;
+        padding: 1rem;
         border-radius: 10px;
         color: white;
         text-align: center;
-        margin: 10px 0;
-    }
-    .ml-card {
-        background: linear-gradient(135deg, #4facfe 0%, #00f2fe 100%);
-        padding: 1.5rem;
-        border-radius: 10px;
-        color: white;
-        text-align: center;
-        margin: 10px 0;
-    }
-    .alert-urgent {
-        background-color: #ffebee;
-        border-left: 5px solid #f44336;
-        padding: 1rem;
-        border-radius: 5px;
-        margin: 10px 0;
-    }
-    .alert-success {
-        background-color: #e8f5e9;
-        border-left: 5px solid #4caf50;
-        padding: 1rem;
-        border-radius: 5px;
-        margin: 10px 0;
     }
 </style>
 """, unsafe_allow_html=True)
 
-@st.cache_data
-def generate_comprehensive_dataset():
-    """Generate a comprehensive dataset for food rescue analytics"""
-    np.random.seed(42)
-    random.seed(42)
+class FoodBridgeDataScience:
+    def __init__(self):
+        self.initialize_data()
+        self.load_or_train_models()
     
-    # Generate 800 data points over 12 months (reduced for better performance)
-    n_records = 800
-    start_date = datetime.now() - timedelta(days=365)
+    def initialize_data(self):
+        """Generate comprehensive synthetic dataset for food rescue analytics"""
+        np.random.seed(42)
+        
+        # Generate donors data
+        self.donors_data = self._generate_donors_data()
+        
+        # Generate historical donations data
+        self.donations_data = self._generate_donations_data()
+        
+        # Generate volunteer data
+        self.volunteers_data = self._generate_volunteers_data()
+        
+        # Generate weather and external factors
+        self.external_factors = self._generate_external_factors()
+        
+        # Generate network data
+        self.network_data = self._generate_network_data()
     
-    data = []
-    
-    # Define realistic parameters
-    areas = ['Race Course', 'RS Puram', 'Gandhipuram', 'Peelamedu', 'Saibaba Colony', 
-             'Singanallur', 'Vadavalli', 'Ukkadam', 'Town Hall', 'Coimbatore North']
-    food_types = ['Cooked Meals', 'Bakery Items', 'Fruits & Vegetables', 'Raw Ingredients', 'Packaged Food', 'Dairy Products']
-    donor_types = ['Restaurant', 'Hotel', 'Bakery', 'Grocery Store', 'Catering Service', 'Individual']
-    categories = ['Vegetarian', 'Non-Vegetarian', 'Vegan', 'Mixed']
-    
-    for i in range(n_records):
-        # Generate realistic temporal patterns
-        days_ago = np.random.randint(0, 365)
-        donation_date = start_date + timedelta(days=days_ago)
+    def _generate_donors_data(self):
+        """Generate donor profiles with features for ML"""
+        donors = []
+        donor_types = ['Restaurant', 'Bakery', 'Grocery Store', 'Catering', 'Hotel', 'Cafe']
+        locations = [(12.9716, 77.5946), (13.0827, 80.2707), (11.0168, 76.9558), 
+                    (15.2993, 74.1240), (17.3850, 78.4867)]
         
-        # Weekly patterns (more donations on weekends)
-        weekday = donation_date.weekday()
-        base_prob = 0.7 if weekday < 5 else 1.2
-        
-        # Seasonal patterns
-        month = donation_date.month
-        seasonal_multiplier = 1.3 if month in [11, 12, 1] else 1.0
-        
-        area = np.random.choice(areas, p=[0.15, 0.12, 0.14, 0.11, 0.09, 0.08, 0.10, 0.07, 0.08, 0.06])
-        food_type = np.random.choice(food_types, p=[0.35, 0.20, 0.15, 0.12, 0.10, 0.08])
-        donor_type = np.random.choice(donor_types, p=[0.25, 0.20, 0.15, 0.15, 0.15, 0.10])
-        category = np.random.choice(categories, p=[0.45, 0.30, 0.15, 0.10])
-        
-        # Realistic quantity based on food type
-        if food_type == 'Cooked Meals':
-            base_quantity = np.random.normal(50, 20)
-        elif food_type == 'Bakery Items':
-            base_quantity = np.random.normal(25, 10)
-        elif food_type == 'Fruits & Vegetables':
-            base_quantity = np.random.normal(30, 15)
-        else:
-            base_quantity = np.random.normal(20, 10)
+        for i in range(500):
+            location = locations[i % len(locations)]
+            donor_type = np.random.choice(donor_types)
             
-        quantity = max(1, int(base_quantity * seasonal_multiplier))
+            # Features that affect donation patterns
+            donor = {
+                'donor_id': f'D_{i:03d}',
+                'name': f'{donor_type}_{i}',
+                'type': donor_type,
+                'latitude': location[0] + np.random.normal(0, 0.1),
+                'longitude': location[1] + np.random.normal(0, 0.1),
+                'size_score': np.random.uniform(1, 10),  # Business size
+                'sustainability_score': np.random.uniform(1, 10),
+                'avg_daily_footfall': np.random.randint(50, 1000),
+                'years_operating': np.random.randint(1, 20),
+                'donation_frequency': np.random.choice(['Daily', 'Weekly', 'Monthly']),
+                'preferred_pickup_time': np.random.choice(['Morning', 'Afternoon', 'Evening']),
+                'max_donation_capacity': np.random.randint(10, 200)
+            }
+            donors.append(donor)
         
-        # Response time
-        base_response = np.random.normal(2.5, 1.2)
-        area_factor = np.random.uniform(0.8, 1.3)
-        response_time = max(0.25, base_response * area_factor)
-        
-        # Success rate
-        success_prob = 0.85 if response_time < 3 else 0.65
-        was_successful = np.random.random() < success_prob
-        
-        # Distance
-        distance = max(0.5, np.random.normal(5.2, 2.8))
-        
-        # Calculate derived metrics
-        estimated_people_served = quantity * np.random.uniform(0.8, 1.2) if food_type == 'Cooked Meals' else quantity * 0.6
-        waste_prevented = quantity * 0.5 if was_successful else 0
-        co2_saved = waste_prevented * 2.5
-        economic_value = quantity * np.random.uniform(50, 200)
-        
-        # Urgency score
-        expiry_hours = np.random.choice([1, 2, 3, 4, 6, 8, 12], p=[0.1, 0.15, 0.2, 0.25, 0.15, 0.1, 0.05])
-        urgency_score = 10 - min(expiry_hours, 10)
-        
-        data.append({
-            'donation_id': f'FD{i+1:04d}',
-            'date': donation_date,
-            'area': area,
-            'food_type': food_type,
-            'donor_type': donor_type,
-            'category': category,
-            'quantity': quantity,
-            'response_time_hours': round(response_time, 2),
-            'was_successful': was_successful,
-            'distance_km': round(distance, 2),
-            'estimated_people_served': int(estimated_people_served),
-            'waste_prevented_kg': round(waste_prevented, 1),
-            'co2_saved_kg': round(co2_saved, 1),
-            'economic_value_inr': round(economic_value, 0),
-            'urgency_score': urgency_score,
-            'expiry_hours': expiry_hours,
-            'weekday': weekday,
-            'month': month,
-            'hour': np.random.randint(6, 23),
-            'volunteer_rating': round(np.random.uniform(3.5, 5.0) if was_successful else np.random.uniform(2.0, 4.0), 1)
-        })
+        return pd.DataFrame(donors)
     
-    return pd.DataFrame(data)
+    def _generate_donations_data(self):
+        """Generate historical donations with temporal patterns"""
+        donations = []
+        
+        # Generate 2 years of daily data
+        start_date = datetime.datetime.now() - timedelta(days=730)
+        
+        for day in range(730):
+            current_date = start_date + timedelta(days=day)
+            
+            # More donations on weekends and holidays
+            day_multiplier = 1.5 if current_date.weekday() >= 5 else 1.0
+            
+            # Seasonal patterns
+            month_multiplier = 1.2 if current_date.month in [11, 12, 1] else 1.0
+            
+            # Daily donations
+            num_donations = int(np.random.poisson(20) * day_multiplier * month_multiplier)
+            
+            for _ in range(num_donations):
+                donor_id = np.random.choice(self.donors_data['donor_id'])
+                donor_info = self.donors_data[self.donors_data['donor_id'] == donor_id].iloc[0]
+                
+                # Food categories with different waste patterns
+                food_categories = ['Prepared Food', 'Bakery Items', 'Fruits', 'Vegetables', 
+                                 'Dairy', 'Packaged Food', 'Beverages']
+                food_type = np.random.choice(food_categories)
+                
+                # Quantity based on donor size and type
+                base_quantity = donor_info['size_score'] * np.random.uniform(0.5, 2)
+                quantity_kg = max(1, np.random.normal(base_quantity, base_quantity * 0.3))
+                
+                # Urgency based on food type
+                urgency_map = {'Prepared Food': 4, 'Dairy': 6, 'Bakery Items': 24, 
+                              'Fruits': 48, 'Vegetables': 72, 'Packaged Food': 168, 'Beverages': 240}
+                hours_to_expire = np.random.normal(urgency_map[food_type], urgency_map[food_type] * 0.3)
+                hours_to_expire = max(1, hours_to_expire)
+                
+                # Success rate based on various factors
+                success_probability = min(0.95, 0.5 + 
+                                        (donor_info['sustainability_score'] / 20) +
+                                        (1 / max(1, hours_to_expire / 24)) * 0.3)
+                
+                donation = {
+                    'donation_id': f'DN_{len(donations):06d}',
+                    'donor_id': donor_id,
+                    'date': current_date,
+                    'food_type': food_type,
+                    'quantity_kg': round(quantity_kg, 2),
+                    'hours_to_expire': round(hours_to_expire, 1),
+                    'pickup_success': np.random.random() < success_probability,
+                    'people_fed_estimate': int(quantity_kg * np.random.uniform(2, 4)),
+                    'day_of_week': current_date.weekday(),
+                    'month': current_date.month,
+                    'hour_posted': np.random.randint(6, 22),
+                    'weather_condition': np.random.choice(['Sunny', 'Rainy', 'Cloudy']),
+                    'latitude': donor_info['latitude'],
+                    'longitude': donor_info['longitude']
+                }
+                donations.append(donation)
+        
+        return pd.DataFrame(donations)
+    
+    def _generate_volunteers_data(self):
+        """Generate volunteer profiles and activity data"""
+        volunteers = []
+        
+        for i in range(200):
+            location = np.random.choice([(12.9716, 77.5946), (13.0827, 80.2707), 
+                                       (11.0168, 76.9558), (15.2993, 74.1240)])
+            
+            volunteer = {
+                'volunteer_id': f'V_{i:03d}',
+                'name': f'Volunteer_{i}',
+                'latitude': location[0] + np.random.normal(0, 0.05),
+                'longitude': location[1] + np.random.normal(0, 0.05),
+                'experience_months': np.random.randint(1, 60),
+                'avg_pickups_per_week': np.random.randint(1, 10),
+                'transport_capacity': np.random.choice(['Bike', 'Car', 'Van']),
+                'availability_hours': np.random.randint(2, 12),
+                'success_rate': np.random.uniform(0.7, 0.98),
+                'preferred_food_types': np.random.choice(['All', 'Prepared Food', 'Packaged Food'])
+            }
+            volunteers.append(volunteer)
+        
+        return pd.DataFrame(volunteers)
+    
+    def _generate_external_factors(self):
+        """Generate weather and external factors data"""
+        factors = []
+        start_date = datetime.datetime.now() - timedelta(days=365)
+        
+        for day in range(365):
+            current_date = start_date + timedelta(days=day)
+            
+            factor = {
+                'date': current_date,
+                'temperature': np.random.normal(25, 8),
+                'rainfall': max(0, np.random.exponential(2)),
+                'humidity': np.random.uniform(40, 90),
+                'festival_day': np.random.random() < 0.05,  # 5% chance
+                'public_holiday': np.random.random() < 0.03,  # 3% chance
+                'economic_index': np.random.normal(100, 10)
+            }
+            factors.append(factor)
+        
+        return pd.DataFrame(factors)
+    
+    def _generate_network_data(self):
+        """Generate network connections between donors, volunteers, and NGOs"""
+        connections = []
+        
+        for _, donation in self.donations_data.iterrows():
+            if donation['pickup_success']:
+                volunteer = np.random.choice(self.volunteers_data['volunteer_id'])
+                ngo = f'NGO_{np.random.randint(1, 20):02d}'
+                
+                connection = {
+                    'donation_id': donation['donation_id'],
+                    'donor_id': donation['donor_id'],
+                    'volunteer_id': volunteer,
+                    'ngo_id': ngo,
+                    'connection_strength': np.random.uniform(0.1, 1.0),
+                    'delivery_time_minutes': np.random.normal(45, 15)
+                }
+                connections.append(connection)
+        
+        return pd.DataFrame(connections)
+    
+    def load_or_train_models(self):
+        """Load or train ML models"""
+        
+        # Prepare features for demand prediction
+        self.prepare_ml_features()
+        
+        # Train demand prediction model
+        self.demand_model = self.train_demand_prediction_model()
+        
+        # Train success rate prediction model
+        self.success_model = self.train_success_prediction_model()
+        
+        # Train clustering model for donor segmentation
+        self.cluster_model = self.train_clustering_model()
+        
+        # Train anomaly detection model
+        self.anomaly_model = self.train_anomaly_detection_model()
+        
+        # Train optimization model
+        self.optimization_model = self.train_optimization_model()
+    
+    def prepare_ml_features(self):
+        """Prepare features for machine learning"""
+        
+        # Merge donations with external factors
+        self.donations_data['date_only'] = self.donations_data['date'].dt.date
+        self.external_factors['date_only'] = self.external_factors['date'].dt.date
+        
+        self.ml_data = self.donations_data.merge(
+            self.external_factors[['date_only', 'temperature', 'rainfall', 'humidity', 'festival_day', 'public_holiday']],
+            on='date_only',
+            how='left'
+        )
+        
+        # Add donor features
+        self.ml_data = self.ml_data.merge(
+            self.donors_data[['donor_id', 'size_score', 'sustainability_score', 'avg_daily_footfall', 'type']],
+            on='donor_id',
+            how='left'
+        )
+        
+        # Feature engineering
+        self.ml_data['urgency_category'] = pd.cut(self.ml_data['hours_to_expire'], 
+                                                 bins=[0, 6, 24, 72, float('inf')], 
+                                                 labels=['Critical', 'High', 'Medium', 'Low'])
+        
+        self.ml_data['quantity_category'] = pd.cut(self.ml_data['quantity_kg'], 
+                                                  bins=5, labels=['XS', 'S', 'M', 'L', 'XL'])
+    
+    def train_demand_prediction_model(self):
+        """Train model to predict food demand"""
+        
+        # Aggregate daily data
+        daily_data = self.ml_data.groupby('date_only').agg({
+            'quantity_kg': 'sum',
+            'temperature': 'mean',
+            'rainfall': 'mean',
+            'humidity': 'mean',
+            'festival_day': 'first',
+            'public_holiday': 'first'
+        }).reset_index()
+        
+        daily_data['day_of_week'] = pd.to_datetime(daily_data['date_only']).dt.dayofweek
+        daily_data['month'] = pd.to_datetime(daily_data['date_only']).dt.month
+        
+        # Prepare features
+        features = ['temperature', 'rainfall', 'humidity', 'festival_day', 
+                   'public_holiday', 'day_of_week', 'month']
+        
+        X = daily_data[features]
+        y = daily_data['quantity_kg']
+        
+        # Train model
+        model = RandomForestRegressor(n_estimators=100, random_state=42)
+        model.fit(X, y)
+        
+        return model
+    
+    def train_success_prediction_model(self):
+        """Train model to predict pickup success"""
+        
+        # Prepare features
+        le = LabelEncoder()
+        features_data = self.ml_data.copy()
+        
+        # Encode categorical variables
+        features_data['food_type_encoded'] = le.fit_transform(features_data['food_type'])
+        features_data['type_encoded'] = le.fit_transform(features_data['type'])
+        features_data['urgency_encoded'] = features_data['hours_to_expire']
+        
+        features = ['quantity_kg', 'hours_to_expire', 'size_score', 'sustainability_score',
+                   'temperature', 'rainfall', 'humidity', 'day_of_week', 'hour_posted',
+                   'food_type_encoded', 'type_encoded']
+        
+        X = features_data[features].fillna(0)
+        y = features_data['pickup_success'].astype(int)
+        
+        # Train model
+        model = xgb.XGBClassifier(random_state=42)
+        model.fit(X, y)
+        
+        return model
+    
+    def train_clustering_model(self):
+        """Train clustering model for donor segmentation"""
+        
+        # Prepare donor features for clustering
+        donor_features = self.donors_data[['size_score', 'sustainability_score', 
+                                          'avg_daily_footfall', 'years_operating']].fillna(0)
+        
+        # Scale features
+        scaler = StandardScaler()
+        scaled_features = scaler.fit_transform(donor_features)
+        
+        # Train KMeans
+        kmeans = KMeans(n_clusters=5, random_state=42)
+        clusters = kmeans.fit_predict(scaled_features)
+        
+        return {'model': kmeans, 'scaler': scaler, 'clusters': clusters}
+    
+    def train_anomaly_detection_model(self):
+        """Train anomaly detection model"""
+        
+        # Prepare features for anomaly detection
+        features = ['quantity_kg', 'hours_to_expire', 'people_fed_estimate', 'day_of_week', 'hour_posted']
+        
+        X = self.ml_data[features].fillna(0)
+        
+        # Train Isolation Forest
+        model = IsolationForest(contamination=0.1, random_state=42)
+        model.fit(X)
+        
+        return model
+    
+    def train_optimization_model(self):
+        """Train model for route optimization"""
+        
+        # Simple optimization model for delivery routes
+        # This would typically involve more complex algorithms like TSP solvers
+        
+        return {"status": "trained", "method": "distance_based"}
 
-# Load data
-@st.cache_data
-def load_data():
-    try:
-        df = generate_comprehensive_dataset()
-        df['date'] = pd.to_datetime(df['date'])
-        return df
-    except Exception as e:
-        st.error(f"Error loading data: {e}")
-        return None
-
-# Initialize data
-df = load_data()
-
-if df is None:
-    st.error("Failed to load data. Please refresh the page.")
-    st.stop()
-
-# App title
-st.title("FoodBridge Data Science Analytics Platform")
-st.markdown("""
-**Advanced Analytics | Machine Learning | Predictive Insights**
-
-A comprehensive data science platform analyzing food rescue patterns, predicting demand, and optimizing 
-resource allocation to maximize impact in reducing food waste and hunger.
-""")
-
-# Sidebar navigation
-with st.sidebar:
-    st.title("Analytics Menu")
-    selected_page = st.radio(
-        "Navigate to:",
-        ["Executive Dashboard", 
-         "Data Exploration", 
-         "Machine Learning Models",
-         "Statistical Analysis",
-         "Geospatial Analytics",
-         "Data Science Reports",
-         "Real-time Predictions"]
+def main():
+    st.markdown('<h1 class="main-header">🍲 FoodBridge AI Analytics Platform</h1>', unsafe_allow_html=True)
+    
+    # Initialize the data science system
+    if 'foodbridge_ds' not in st.session_state:
+        with st.spinner("Initializing AI models and loading data..."):
+            st.session_state.foodbridge_ds = FoodBridgeDataScience()
+    
+    fb_ds = st.session_state.foodbridge_ds
+    
+    # Sidebar navigation
+    st.sidebar.title("🧠 AI Analytics Dashboard")
+    page = st.sidebar.selectbox(
+        "Choose Analysis Type",
+        ["📊 Overview & KPIs", "🔮 Predictive Analytics", "👥 Donor Segmentation", 
+         "🗺️ Geographic Intelligence", "📈 Time Series Analysis", "🔍 Anomaly Detection",
+         "🌐 Network Analysis", "🎯 Optimization Engine"]
     )
-
-# Executive Dashboard
-if selected_page == "Executive Dashboard":
-    st.header("Executive Dashboard")
     
-    # Key Performance Indicators
+    if page == "📊 Overview & KPIs":
+        show_overview_dashboard(fb_ds)
+    elif page == "🔮 Predictive Analytics":
+        show_predictive_analytics(fb_ds)
+    elif page == "👥 Donor Segmentation":
+        show_donor_segmentation(fb_ds)
+    elif page == "🗺️ Geographic Intelligence":
+        show_geographic_intelligence(fb_ds)
+    elif page == "📈 Time Series Analysis":
+        show_time_series_analysis(fb_ds)
+    elif page == "🔍 Anomaly Detection":
+        show_anomaly_detection(fb_ds)
+    elif page == "🌐 Network Analysis":
+        show_network_analysis(fb_ds)
+    elif page == "🎯 Optimization Engine":
+        show_optimization_engine(fb_ds)
+
+def show_overview_dashboard(fb_ds):
+    """Show main KPI dashboard with advanced analytics"""
+    
+    st.header("📊 Advanced Analytics Overview")
+    
+    # Key metrics
     col1, col2, col3, col4 = st.columns(4)
     
-    total_donations = len(df)
-    successful_donations = int(df['was_successful'].sum())
-    total_people_served = int(df[df['was_successful']]['estimated_people_served'].sum())
-    total_waste_prevented = df['waste_prevented_kg'].sum()
+    total_donations = len(fb_ds.donations_data)
+    success_rate = fb_ds.donations_data['pickup_success'].mean()
+    total_food_rescued = fb_ds.donations_data['quantity_kg'].sum()
+    people_fed = fb_ds.donations_data['people_fed_estimate'].sum()
     
     with col1:
         st.markdown(f"""
         <div class="metric-card">
-            <h3>Total Donations</h3>
+            <h3>🎯 Total Donations</h3>
             <h2>{total_donations:,}</h2>
         </div>
         """, unsafe_allow_html=True)
     
     with col2:
-        success_rate = (successful_donations / total_donations) * 100
         st.markdown(f"""
-        <div class="ds-card">
-            <h3>Success Rate</h3>
-            <h2>{success_rate:.1f}%</h2>
+        <div class="metric-card">
+            <h3>✅ Success Rate</h3>
+            <h2>{success_rate:.1%}</h2>
         </div>
         """, unsafe_allow_html=True)
     
     with col3:
         st.markdown(f"""
-        <div class="ml-card">
-            <h3>People Served</h3>
-            <h2>{total_people_served:,}</h2>
+        <div class="metric-card">
+            <h3>🍽️ Food Rescued</h3>
+            <h2>{total_food_rescued:,.0f} kg</h2>
         </div>
         """, unsafe_allow_html=True)
     
     with col4:
         st.markdown(f"""
         <div class="metric-card">
-            <h3>Waste Prevented</h3>
-            <h2>{total_waste_prevented:,.0f}kg</h2>
+            <h3>👥 People Fed</h3>
+            <h2>{people_fed:,}</h2>
         </div>
         """, unsafe_allow_html=True)
     
-    # Time series analysis
-    st.subheader("Temporal Trends Analysis")
+    # Advanced visualizations
+    col1, col2 = st.columns(2)
     
-    try:
-        # Daily aggregation
-        daily_stats = df.groupby(df['date'].dt.date).agg({
-            'donation_id': 'count',
-            'was_successful': 'sum',
-            'waste_prevented_kg': 'sum',
-            'estimated_people_served': 'sum'
-        }).reset_index()
+    with col1:
+        st.subheader("📈 Daily Food Rescue Trends")
+        daily_trends = fb_ds.donations_data.groupby(fb_ds.donations_data['date'].dt.date)['quantity_kg'].sum().reset_index()
+        daily_trends.columns = ['Date', 'Quantity']
         
-        # Create subplot
-        fig = make_subplots(
-            rows=2, cols=2,
-            subplot_titles=('Daily Donations', 'Success Rate', 'Waste Prevented (kg)', 'People Served'),
-            specs=[[{"secondary_y": False}, {"secondary_y": False}],
-                   [{"secondary_y": False}, {"secondary_y": False}]]
-        )
-        
-        # Add traces
-        fig.add_trace(go.Scatter(x=daily_stats['date'], y=daily_stats['donation_id'], 
-                                mode='lines', name='Donations', line=dict(color='blue')), row=1, col=1)
-        
-        daily_stats['success_rate'] = (daily_stats['was_successful'] / daily_stats['donation_id']) * 100
-        fig.add_trace(go.Scatter(x=daily_stats['date'], y=daily_stats['success_rate'], 
-                                mode='lines', name='Success %', line=dict(color='green')), row=1, col=2)
-        
-        fig.add_trace(go.Scatter(x=daily_stats['date'], y=daily_stats['waste_prevented_kg'], 
-                                mode='lines', name='Waste Prevented', line=dict(color='orange')), row=2, col=1)
-        
-        fig.add_trace(go.Scatter(x=daily_stats['date'], y=daily_stats['estimated_people_served'], 
-                                mode='lines', name='People Served', line=dict(color='purple')), row=2, col=2)
-        
-        fig.update_layout(height=600, showlegend=False, title_text="Key Metrics Over Time")
+        fig = px.line(daily_trends, x='Date', y='Quantity', 
+                     title="Daily Food Rescue Volume")
+        fig.add_scatter(x=daily_trends['Date'], y=daily_trends['Quantity'], 
+                       mode='markers', name='Daily Points')
         st.plotly_chart(fig, use_container_width=True)
-    except Exception as e:
-        st.error(f"Error creating time series chart: {e}")
-    
-    # Performance by area
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.subheader("Performance by Area")
-        try:
-            area_stats = df.groupby('area').agg({
-                'donation_id': 'count',
-                'was_successful': 'mean',
-                'response_time_hours': 'mean',
-                'waste_prevented_kg': 'sum'
-            }).round(2)
-            area_stats['success_rate'] = (area_stats['was_successful'] * 100).round(1)
-            
-            fig_area = px.bar(
-                x=area_stats.index, 
-                y=area_stats['donation_id'],
-                color=area_stats['success_rate'],
-                color_continuous_scale='RdYlGn',
-                title="Donations by Area (colored by success rate)",
-                labels={'x': 'Area', 'y': 'Number of Donations', 'color': 'Success Rate %'}
-            )
-            st.plotly_chart(fig_area, use_container_width=True)
-        except Exception as e:
-            st.error(f"Error creating area chart: {e}")
     
     with col2:
-        st.subheader("Food Type Distribution")
-        try:
-            food_stats = df['food_type'].value_counts()
-            fig_pie = px.pie(
-                values=food_stats.values,
-                names=food_stats.index,
-                title="Distribution of Food Types"
-            )
-            st.plotly_chart(fig_pie, use_container_width=True)
-        except Exception as e:
-            st.error(f"Error creating pie chart: {e}")
-
-# Data Exploration
-elif selected_page == "Data Exploration":
-    st.header("Data Exploration & Insights")
-    
-    # Dataset overview
-    st.subheader("Dataset Overview")
-    col1, col2, col3 = st.columns(3)
-    with col1:
-        st.metric("Total Records", f"{len(df):,}")
-    with col2:
-        st.metric("Date Range", f"{df['date'].dt.date.min()} to {df['date'].dt.date.max()}")
-    with col3:
-        st.metric("Features", f"{len(df.columns)}")
-    
-    # Display data sample
-    st.subheader("Data Sample")
-    st.dataframe(df.head(10))
-    
-    # Data quality assessment
-    st.subheader("Data Quality Assessment")
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.write("**Missing Values:**")
-        missing_data = df.isnull().sum()
-        if missing_data.sum() == 0:
-            st.success("No missing values found!")
-        else:
-            st.dataframe(missing_data[missing_data > 0])
-    
-    with col2:
-        st.write("**Data Types:**")
-        data_types = df.dtypes.value_counts()
-        try:
-            fig_types = px.pie(values=data_types.values, names=data_types.index, 
-                              title="Distribution of Data Types")
-            st.plotly_chart(fig_types, use_container_width=True)
-        except Exception as e:
-            st.error(f"Error creating data types chart: {e}")
-    
-    # Statistical summary
-    st.subheader("Statistical Summary")
-    numeric_cols = df.select_dtypes(include=[np.number]).columns
-    
-    if len(numeric_cols) > 0:
-        summary_stats = df[numeric_cols].describe()
-        st.dataframe(summary_stats)
-        
-        # Correlation analysis
-        st.subheader("Correlation Analysis")
-        try:
-            correlation_matrix = df[numeric_cols].corr()
-            
-            fig_corr = px.imshow(
-                correlation_matrix,
-                title="Feature Correlation Heatmap",
-                color_continuous_scale='RdBu_r',
-                aspect="auto"
-            )
-            st.plotly_chart(fig_corr, use_container_width=True)
-        except Exception as e:
-            st.error(f"Error creating correlation heatmap: {e}")
-    
-    # Distribution analysis
-    st.subheader("Distribution Analysis")
-    
-    if len(numeric_cols) > 0:
-        selected_feature = st.selectbox(
-            "Select feature to analyze:",
-            numeric_cols
-        )
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            try:
-                fig_hist = px.histogram(
-                    df, x=selected_feature,
-                    title=f"Distribution of {selected_feature}",
-                    marginal="box"
-                )
-                st.plotly_chart(fig_hist, use_container_width=True)
-            except Exception as e:
-                st.error(f"Error creating histogram: {e}")
-        
-        with col2:
-            try:
-                fig_box = px.box(
-                    df, y=selected_feature, x='area',
-                    title=f"{selected_feature} by Area"
-                )
-                fig_box.update_xaxis(tickangle=45)
-                st.plotly_chart(fig_box, use_container_width=True)
-            except Exception as e:
-                st.error(f"Error creating box plot: {e}")
-
-# Machine Learning Models
-elif selected_page == "Machine Learning Models":
-    st.header("Machine Learning Models & Predictions")
-    
-    model_type = st.selectbox(
-        "Select Model Type:",
-        ["Success Prediction", "Response Time Prediction", "Food Type Classification", "Clustering Analysis"]
-    )
-    
-    if model_type == "Success Prediction":
-        st.subheader("Donation Success Prediction Model")
-        
-        try:
-            # Prepare features
-            features_for_success = ['quantity', 'distance_km', 'urgency_score', 'expiry_hours', 'weekday', 'hour']
-            
-            # Add encoded categorical features
-            le_area = LabelEncoder()
-            le_food_type = LabelEncoder()
-            le_donor_type = LabelEncoder()
-            
-            df_ml = df.copy()
-            df_ml['area_encoded'] = le_area.fit_transform(df_ml['area'])
-            df_ml['food_type_encoded'] = le_food_type.fit_transform(df_ml['food_type'])
-            df_ml['donor_type_encoded'] = le_donor_type.fit_transform(df_ml['donor_type'])
-            
-            X = df_ml[features_for_success + ['area_encoded', 'food_type_encoded', 'donor_type_encoded']]
-            y = df_ml['was_successful']
-            
-            # Train-test split
-            X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-            
-            # Train Random Forest model
-            rf_classifier = RandomForestClassifier(n_estimators=100, random_state=42)
-            rf_classifier.fit(X_train, y_train)
-            
-            # Predictions
-            y_pred = rf_classifier.predict(X_test)
-            
-            # Model performance
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                accuracy = accuracy_score(y_test, y_pred)
-                st.metric("Model Accuracy", f"{accuracy:.3f}")
-                
-                # Feature importance
-                feature_importance = pd.DataFrame({
-                    'feature': X.columns,
-                    'importance': rf_classifier.feature_importances_
-                }).sort_values('importance', ascending=False)
-                
-                fig_importance = px.bar(
-                    feature_importance.head(10),
-                    x='importance', y='feature',
-                    orientation='h',
-                    title="Top 10 Feature Importance"
-                )
-                st.plotly_chart(fig_importance, use_container_width=True)
-            
-            with col2:
-                # Classification metrics
-                precision = precision_score(y_test, y_pred)
-                recall = recall_score(y_test, y_pred)
-                f1 = f1_score(y_test, y_pred)
-                
-                st.metric("Precision", f"{precision:.3f}")
-                st.metric("Recall", f"{recall:.3f}")
-                st.metric("F1-Score", f"{f1:.3f}")
-                
-                # Confusion matrix
-                cm = confusion_matrix(y_test, y_pred)
-                fig_cm = px.imshow(cm, title="Confusion Matrix",
-                                 labels=dict(x="Predicted", y="Actual"),
-                                 x=['Failed', 'Successful'], y=['Failed', 'Successful'])
-                st.plotly_chart(fig_cm, use_container_width=True)
-            
-            # Prediction interface
-            st.subheader("Make Prediction")
-            col1, col2, col3 = st.columns(3)
-            
-            with col1:
-                pred_quantity = st.number_input("Quantity", min_value=1, max_value=200, value=50)
-                pred_distance = st.number_input("Distance (km)", min_value=0.1, max_value=50.0, value=5.0)
-                pred_urgency = st.slider("Urgency Score", 1, 10, 5)
-            
-            with col2:
-                pred_expiry = st.number_input("Expiry Hours", min_value=1, max_value=24, value=4)
-                pred_weekday = st.slider("Weekday (0=Mon, 6=Sun)", 0, 6, 1)
-                pred_hour = st.slider("Hour of Day", 0, 23, 12)
-            
-            with col3:
-                pred_area = st.selectbox("Area", df['area'].unique())
-                pred_food_type = st.selectbox("Food Type", df['food_type'].unique())
-                pred_donor_type = st.selectbox("Donor Type", df['donor_type'].unique())
-            
-            if st.button("Predict Success Probability"):
-                # Prepare prediction data
-                pred_data = pd.DataFrame({
-                    'quantity': [pred_quantity],
-                    'distance_km': [pred_distance],
-                    'urgency_score': [pred_urgency],
-                    'expiry_hours': [pred_expiry],
-                    'weekday': [pred_weekday],
-                    'hour': [pred_hour],
-                    'area_encoded': [le_area.transform([pred_area])[0]],
-                    'food_type_encoded': [le_food_type.transform([pred_food_type])[0]],
-                    'donor_type_encoded': [le_donor_type.transform([pred_donor_type])[0]]
-                })
-                
-                success_prob = rf_classifier.predict_proba(pred_data)[0][1]
-                
-                if success_prob > 0.7:
-                    st.success(f"High Success Probability: {success_prob:.2%}")
-                elif success_prob > 0.5:
-                    st.warning(f"Moderate Success Probability: {success_prob:.2%}")
-                else:
-                    st.error(f"Low Success Probability: {success_prob:.2%}")
-        
-        except Exception as e:
-            st.error(f"Error in success prediction model: {e}")
-    
-    elif model_type == "Response Time Prediction":
-        st.subheader("Response Time Prediction Model")
-        
-        try:
-            # Prepare features for response time prediction
-            features_for_time = ['quantity', 'distance_km', 'urgency_score', 'weekday', 'hour']
-            
-            df_ml = df.copy()
-            df_ml['area_encoded'] = LabelEncoder().fit_transform(df_ml['area'])
-            
-            X = df_ml[features_for_time + ['area_encoded']]
-            y = df_ml['response_time_hours']
-            
-            X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
-            
-            # Train model
-            rf_regressor = RandomForestRegressor(n_estimators=100, random_state=42)
-            rf_regressor.fit(X_train, y_train)
-            
-            # Predictions
-            y_pred = rf_regressor.predict(X_test)
-            
-            # Model performance
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                mae = mean_absolute_error(y_test, y_pred)
-                r2 = r2_score(y_test, y_pred)
-                
-                st.metric("Mean Absolute Error", f"{mae:.2f} hours")
-                st.metric("R² Score", f"{r2:.3f}")
-                
-                # Actual vs Predicted
-                fig_scatter = px.scatter(
-                    x=y_test, y=y_pred,
-                    title="Actual vs Predicted Response Time",
-                    labels={'x': 'Actual (hours)', 'y': 'Predicted (hours)'}
-                )
-                fig_scatter.add_shape(
-                    type="line", line=dict(dash="dash", color="red"),
-                    x0=y_test.min(), y0=y_test.min(),
-                    x1=y_test.max(), y1=y_test.max()
-                )
-                st.plotly_chart(fig_scatter, use_container_width=True)
-            
-            with col2:
-                # Feature importance
-                feature_importance = pd.DataFrame({
-                    'feature': X.columns,
-                    'importance': rf_regressor.feature_importances_
-                }).sort_values('importance', ascending=False)
-                
-                fig_importance = px.bar(
-                    feature_importance,
-                    x='importance', y='feature',
-                    orientation='h',
-                    title="Feature Importance for Response Time"
-                )
-                st.plotly_chart(fig_importance, use_container_width=True)
-        
-        except Exception as e:
-            st.error(f"Error in response time prediction model: {e}")
-    
-    elif model_type == "Clustering Analysis":
-        st.subheader("Clustering Analysis - Donation Patterns")
-        
-        try:
-            # Prepare features for clustering
-            features_for_clustering = ['quantity', 'distance_km', 'response_time_hours', 'urgency_score', 'estimated_people_served']
-            
-            # Standardize features
-            scaler = StandardScaler()
-            X_scaled = scaler.fit_transform(df[features_for_clustering])
-            
-            # K-means clustering
-            n_clusters = st.slider("Number of Clusters", 2, 8, 4)
-            
-            kmeans = KMeans(n_clusters=n_clusters, random_state=42)
-            clusters = kmeans.fit_predict(X_scaled)
-            
-            df_clustered = df.copy()
-            df_clustered['Cluster'] = clusters
-            
-            # Visualize clusters
-            col1, col2 = st.columns(2)
-            
-            with col1:
-                fig_cluster = px.scatter(
-                    df_clustered, x='quantity', y='response_time_hours',
-                    color='Cluster', size='estimated_people_served',
-                    title="Donation Clusters (Quantity vs Response Time)",
-                    hover_data=['food_type', 'area']
-                )
-                st.plotly_chart(fig_cluster, use_container_width=True)
-            
-            with col2:
-                # Cluster characteristics
-                cluster_summary = df_clustered.groupby('Cluster')[features_for_clustering].mean()
-                
-                st.write("**Cluster Characteristics:**")
-                st.dataframe(cluster_summary.round(2))
-                
-                # Cluster distribution
-                cluster_counts = df_clustered['Cluster'].value_counts().sort_index()
-                fig_dist = px.bar(
-                    x=cluster_counts.index, y=cluster_counts.values,
-                    title="Distribution of Donations Across Clusters",
-                    labels={'x': 'Cluster', 'y': 'Number of Donations'}
-                )
-                st.plotly_chart(fig_dist, use_container_width=True)
-        
-        except Exception as e:
-            st.error(f"Error in clustering analysis: {e}")
-
-# Statistical Analysis
-elif selected_page == "Statistical Analysis":
-    st.header("Advanced Statistical Analysis")
-    
-    # Hypothesis testing
-    st.subheader("Hypothesis Testing")
-    
-    col1, col2 = st.columns(2)
-    
-    with col1:
-        st.write("**Success Rate by Food Type**")
-        try:
-            success_by_type = df.groupby('food_type')['was_successful'].agg(['mean', 'count']).round(3)
-            success_by_type.columns = ['Success_Rate', 'Count']
-            st.dataframe(success_by_type)
-            
-            # Chi-square test
-            contingency_table = pd.crosstab(df['food_type'], df['was_successful'])
-            chi2, p_value, dof, expected = chi2_contingency(contingency_table)
-            
-            if p_value < 0.05:
-                st.success(f"Significant association found (p-value: {p_value:.4f})")
-            else:
-                st.info(f"No significant association (p-value: {p_value:.4f})")
-        except Exception as e:
-            st.error(f"Error in chi-square test: {e}")
-    
-    with col2:
-        st.write("**Response Time by Area**")
-        try:
-            response_by_area = df.groupby('area')['response_time_hours'].agg(['mean', 'std', 'count']).round(2)
-            st.dataframe(response_by_area)
-            
-            # ANOVA test
-            area_groups = [group['response_time_hours'].values for name, group in df.groupby('area')]
-            f_stat, p_value_anova = f_oneway(*area_groups)
-            
-            if p_value_anova < 0.05:
-                st.success(f"Significant difference between areas (p-value: {p_value_anova:.4f})")
-            else:
-                st.info(f"No significant difference between areas (p-value: {p_value_anova:.4f})")
-        except Exception as e:
-            st.error(f"Error in ANOVA test: {e}")
-    
-    # Time series analysis
-    st.subheader("Time Series Analysis")
-    
-    try:
-        # Daily aggregation for time series
-        daily_data = df.groupby(df['date'].dt.date).agg({
-            'donation_id': 'count',
-            'was_successful': 'mean',
-            'waste_prevented_kg': 'sum'
+        st.subheader("🎯 Success Rate by Food Type")
+        success_by_type = fb_ds.donations_data.groupby('food_type').agg({
+            'pickup_success': 'mean',
+            'quantity_kg': 'count'
         }).reset_index()
-        daily_data['date'] = pd.to_datetime(daily_data['date'])
+        success_by_type.columns = ['Food Type', 'Success Rate', 'Count']
         
-        # Moving averages
-        daily_data['donations_ma_7'] = daily_data['donation_id'].rolling(window=7, center=True).mean()
-        daily_data['donations_ma_30'] = daily_data['donation_id'].rolling(window=30, center=True).mean()
-        
-        fig_ts = go.Figure()
-        fig_ts.add_trace(go.Scatter(x=daily_data['date'], y=daily_data['donation_id'], 
-                                   mode='lines', name='Daily Donations', line=dict(color='lightblue')))
-        fig_ts.add_trace(go.Scatter(x=daily_data['date'], y=daily_data['donations_ma_7'], 
-                                   mode='lines', name='7-Day MA', line=dict(color='blue')))
-        fig_ts.add_trace(go.Scatter(x=daily_data['date'], y=daily_data['donations_ma_30'], 
-                                   mode='lines', name='30-Day MA', line=dict(color='red')))
-        
-        fig_ts.update_layout(title="Daily Donations with Moving Averages", 
-                            xaxis_title="Date", yaxis_title="Number of Donations")
-        st.plotly_chart(fig_ts, use_container_width=True)
-    except Exception as e:
-        st.error(f"Error creating time series chart: {e}")
+        fig = px.bar(success_by_type, x='Food Type', y='Success Rate',
+                    title="Pickup Success Rate by Food Category",
+                    color='Success Rate', color_continuous_scale='RdYlGn')
+        fig.update_layout(xaxis_tickangle=-45)
+        st.plotly_chart(fig, use_container_width=True)
     
-    # Seasonal patterns
-    st.subheader("Seasonal & Weekly Patterns")
+    # Correlation heatmap
+    st.subheader("🔥 Feature Correlation Analysis")
+    
+    numeric_cols = ['quantity_kg', 'hours_to_expire', 'people_fed_estimate', 
+                   'day_of_week', 'hour_posted', 'temperature', 'rainfall', 'humidity']
+    
+    corr_data = fb_ds.ml_data[numeric_cols].corr()
+    
+    fig = px.imshow(corr_data, text_auto=True, aspect="auto",
+                   title="Feature Correlation Matrix")
+    st.plotly_chart(fig, use_container_width=True)
+
+def show_predictive_analytics(fb_ds):
+    """Show predictive analytics dashboard"""
+    
+    st.header("🔮 AI-Powered Predictive Analytics")
+    
+    # Demand prediction
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.subheader("📊 Food Demand Prediction")
+        
+        # User inputs for prediction
+        temp = st.slider("Temperature (°C)", 10, 40, 25)
+        rainfall = st.slider("Rainfall (mm)", 0.0, 20.0, 2.0)
+        humidity = st.slider("Humidity (%)", 40, 90, 70)
+        is_festival = st.checkbox("Festival Day")
+        is_holiday = st.checkbox("Public Holiday")
+        day_of_week = st.selectbox("Day of Week", 
+                                  ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 
+                                   'Friday', 'Saturday', 'Sunday'])
+        month = st.selectbox("Month", range(1, 13))
+        
+        # Convert day of week to number
+        day_mapping = {'Monday': 0, 'Tuesday': 1, 'Wednesday': 2, 'Thursday': 3,
+                      'Friday': 4, 'Saturday': 5, 'Sunday': 6}
+        day_num = day_mapping[day_of_week]
+        
+        # Make prediction
+        features = np.array([[temp, rainfall, humidity, is_festival, is_holiday, day_num, month]])
+        
+        try:
+            prediction = fb_ds.demand_model.predict(features)[0]
+            
+            st.markdown(f"""
+            <div class="prediction-card">
+                <h3>🎯 Predicted Daily Demand</h3>
+                <h2>{prediction:.1f} kg</h2>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # Show confidence intervals
+            st.info(f"Expected range: {prediction*0.8:.1f} - {prediction*1.2:.1f} kg")
+            
+        except Exception as e:
+            st.error("Error making prediction. Please check inputs.")
+    
+    with col2:
+        st.subheader("✅ Pickup Success Probability")
+        
+        # Success prediction inputs
+        quantity = st.number_input("Quantity (kg)", 1.0, 100.0, 10.0)
+        hours_expire = st.number_input("Hours to Expire", 1.0, 168.0, 24.0)
+        donor_size = st.slider("Donor Size Score", 1.0, 10.0, 5.0)
+        sustainability = st.slider("Sustainability Score", 1.0, 10.0, 5.0)
+        hour_posted = st.slider("Hour Posted", 0, 23, 12)
+        
+        # Food type and donor type (simplified encoding)
+        food_type_map = {'Prepared Food': 0, 'Bakery Items': 1, 'Fruits': 2, 
+                        'Vegetables': 3, 'Dairy': 4, 'Packaged Food': 5, 'Beverages': 6}
+        food_type = st.selectbox("Food Type", list(food_type_map.keys()))
+        
+        donor_type_map = {'Restaurant': 0, 'Bakery': 1, 'Grocery Store': 2, 
+                         'Catering': 3, 'Hotel': 4, 'Cafe': 5}
+        donor_type = st.selectbox("Donor Type", list(donor_type_map.keys()))
+        
+        # Make success prediction
+        success_features = np.array([[quantity, hours_expire, donor_size, sustainability,
+                                    temp, rainfall, humidity, day_num, hour_posted,
+                                    food_type_map[food_type], donor_type_map[donor_type]]])
+        
+        try:
+            success_prob = fb_ds.success_model.predict_proba(success_features)[0][1]
+            
+            st.markdown(f"""
+            <div class="prediction-card">
+                <h3>📈 Success Probability</h3>
+                <h2>{success_prob:.1%}</h2>
+            </div>
+            """, unsafe_allow_html=True)
+            
+            # Recommendation
+            if success_prob > 0.8:
+                st.success("🟢 High success probability - Recommended for posting!")
+            elif success_prob > 0.6:
+                st.warning("🟡 Moderate success probability - Consider optimizing timing or quantity")
+            else:
+                st.error("🔴 Low success probability - Review posting strategy")
+                
+        except Exception as e:
+            st.error("Error making success prediction.")
+    
+    # Feature importance
+    st.subheader("🔍 Model Feature Importance")
+    
+    try:
+        # Get feature importance from the success model
+        feature_names = ['Quantity', 'Hours to Expire', 'Donor Size', 'Sustainability',
+                        'Temperature', 'Rainfall', 'Humidity', 'Day of Week', 'Hour Posted',
+                        'Food Type', 'Donor Type']
+        
+        importance_scores = fb_ds.success_model.feature_importances_
+        
+        importance_df = pd.DataFrame({
+            'Feature': feature_names,
+            'Importance': importance_scores
+        }).sort_values('Importance', ascending=True)
+        
+        fig = px.bar(importance_df, x='Importance', y='Feature', orientation='h',
+                    title="Feature Importance in Success Prediction Model")
+        st.plotly_chart(fig, use_container_width=True)
+        
+    except Exception as e:
+        st.info("Feature importance analysis not available.")
+
+def show_donor_segmentation(fb_ds):
+    """Show donor segmentation analysis"""
+    
+    st.header("👥 AI-Powered Donor Segmentation")
+    
+    # Cluster analysis
+    clusters = fb_ds.cluster_model['clusters']
+    cluster_data = fb_ds.donors_data.copy()
+    cluster_data['Cluster'] = clusters
     
     col1, col2 = st.columns(2)
     
     with col1:
-        try:
-            # Weekly patterns
-            weekly_pattern = df.groupby('weekday').agg({
-                'donation_id': 'count',
-                'was_successful': 'mean'
-            }).reset_index()
-            
-            days_map = {0: 'Mon', 1: 'Tue', 2: 'Wed', 3: 'Thu', 4: 'Fri', 5: 'Sat', 6: 'Sun'}
-            weekly_pattern['day_name'] = weekly_pattern['weekday'].map(days_map)
-            
-            fig_weekly = px.bar(weekly_pattern, x='day_name', y='donation_id',
-                               title="Donations by Day of Week")
-            st.plotly_chart(fig_weekly, use_container_width=True)
-        except Exception as e:
-            st.error(f"Error creating weekly pattern chart: {e}")
+        st.subheader("🎯 Donor Clusters")
+        
+        fig = px.scatter(cluster_data, x='size_score', y='sustainability_score',
+                        color='Cluster', hover_data=['type', 'avg_daily_footfall'],
+                        title="Donor Segmentation: Size vs Sustainability")
+        st.plotly_chart(fig, use_container_width=True)
     
     with col2:
-        try:
-            # Monthly patterns
-            monthly_pattern = df.groupby('month').agg({
-                'donation_id': 'count',
-                'waste_prevented_kg': 'sum'
-            }).reset_index()
-            
-            fig_monthly = px.line(monthly_pattern, x='month', y='donation_id',
-                                 title="Donations by Month")
-            st.plotly_chart(fig_monthly, use_container_width=True)
-        except Exception as e:
-            st.error(f"Error creating monthly pattern chart: {e}")
-
-# Geospatial Analytics
-elif selected_page == "Geospatial Analytics":
-    st.header("Geospatial Analytics & Location Intelligence")
-    
-    try:
-        # Generate coordinates for areas
-        area_coordinates = {
-            'Race Course': [11.0168, 76.9558],
-            'RS Puram': [11.0096, 76.9750],
-            'Gandhipuram': [11.0183, 76.9725],
-            'Peelamedu': [11.0296, 76.9378],
-            'Saibaba Colony': [11.0240, 76.9350],
-            'Singanallur': [11.0400, 76.9200],
-            'Vadavalli': [11.0100, 76.9100],
-            'Ukkadam': [11.0050, 76.9400],
-            'Town Hall': [11.0170, 76.9600],
-            'Coimbatore North': [11.0300, 76.9500]
-        }
+        st.subheader("📊 Cluster Characteristics")
         
-        # Create enhanced dataset with coordinates
-        df_geo = df.copy()
-        df_geo['lat'] = df_geo['area'].map(lambda x: area_coordinates[x][0] + np.random.normal(0, 0.002))
-        df_geo['lon'] = df_geo['area'].map(lambda x: area_coordinates[x][1] + np.random.normal(0, 0.002))
-        
-        # Area performance analysis
-        area_stats = df.groupby('area').agg({
-            'donation_id': 'count',
-            'was_successful': 'mean',
-            'response_time_hours': 'mean',
-            'waste_prevented_kg': 'sum',
-            'estimated_people_served': 'sum'
+        cluster_stats = cluster_data.groupby('Cluster').agg({
+            'size_score': 'mean',
+            'sustainability_score': 'mean',
+            'avg_daily_footfall': 'mean',
+            'years_operating': 'mean'
         }).round(2)
         
-        area_stats['success_rate'] = (area_stats['was_successful'] * 100).round(1)
-        
-        # Add coordinates to area stats
-        for area in area_stats.index:
-            area_stats.loc[area, 'lat'] = area_coordinates[area][0]
-            area_stats.loc[area, 'lon'] = area_coordinates[area][1]
-        
-        # Interactive map
-        st.subheader("Interactive Performance Map")
-        
-        fig_map = px.scatter_mapbox(
-            area_stats.reset_index(),
-            lat="lat", lon="lon",
-            size="donation_id",
-            color="success_rate",
-            hover_name="area",
-            hover_data={
-                "donation_id": True,
-                "response_time_hours": True,
-                "waste_prevented_kg": True
-            },
-            color_continuous_scale="RdYlGn",
-            size_max=30,
-            zoom=11,
-            title="Food Rescue Performance by Area"
-        )
-        
-        fig_map.update_layout(
-            mapbox_style="open-street-map",
-            height=600,
-            margin={"r":0,"t":0,"l":0,"b":0}
-        )
-        
-        st.plotly_chart(fig_map, use_container_width=True)
-        
-        # Distance analysis
-        st.subheader("Distance Impact Analysis")
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            # Distance vs success rate
-            df_geo['distance_bins'] = pd.cut(df_geo['distance_km'], bins=5, labels=['<2km', '2-4km', '4-6km', '6-8km', '>8km'])
-            distance_success = df_geo.groupby('distance_bins')['was_successful'].mean()
-            
-            fig_distance = px.bar(
-                x=distance_success.index.astype(str), 
-                y=distance_success.values,
-                title="Success Rate by Distance",
-                labels={'x': 'Distance Range', 'y': 'Success Rate'}
-            )
-            st.plotly_chart(fig_distance, use_container_width=True)
-        
-        with col2:
-            # Response time vs distance
-            fig_scatter_dist = px.scatter(
-                df_geo, x='distance_km', y='response_time_hours',
-                color='was_successful',
-                title="Distance vs Response Time",
-                trendline="ols"
-            )
-            st.plotly_chart(fig_scatter_dist, use_container_width=True)
-    except Exception as e:
-        st.error(f"Error in geospatial analytics: {e}")
-
-# Data Science Reports
-elif selected_page == "Data Science Reports":
-    st.header("Comprehensive Data Science Reports")
+        st.dataframe(cluster_stats)
     
-    # Executive summary
-    st.subheader("Executive Summary")
+    # Cluster descriptions
+    st.subheader("🏷️ Cluster Profiles")
     
-    try:
-        # Key insights
-        total_impact = {
-            'donations': len(df),
-            'success_rate': df['was_successful'].mean() * 100,
-            'avg_response_time': df['response_time_hours'].mean(),
-            'total_waste_prevented': df['waste_prevented_kg'].sum(),
-            'total_people_served': df[df['was_successful']]['estimated_people_served'].sum(),
-            'total_co2_saved': df['co2_saved_kg'].sum(),
-            'economic_value': df[df['was_successful']]['economic_value_inr'].sum()
-        }
-        
-        st.markdown(f"""
-        <div class="alert-success">
-            <h4>Key Performance Indicators (Last 12 Months)</h4>
-            <ul>
-                <li><strong>Total Donations Processed:</strong> {total_impact['donations']:,}</li>
-                <li><strong>Overall Success Rate:</strong> {total_impact['success_rate']:.1f}%</li>
-                <li><strong>Average Response Time:</strong> {total_impact['avg_response_time']:.1f} hours</li>
-                <li><strong>Food Waste Prevented:</strong> {total_impact['total_waste_prevented']:,.0f} kg</li>
-                <li><strong>People Served:</strong> {total_impact['total_people_served']:,.0f}</li>
-                <li><strong>CO₂ Emissions Saved:</strong> {total_impact['total_co2_saved']:,.0f} kg</li>
-                <li><strong>Economic Value Created:</strong> ₹{total_impact['economic_value']:,.0f}</li>
-            </ul>
-        </div>
-        """, unsafe_allow_html=True)
-        
-        # Trend analysis
-        st.subheader("Trend Analysis & Insights")
-        
-        # Monthly trends
-        monthly_trends = df.groupby(df['date'].dt.to_period('M')).agg({
-            'donation_id': 'count',
-            'was_successful': 'mean',
-            'response_time_hours': 'mean',
-            'waste_prevented_kg': 'sum'
-        }).reset_index()
-        
-        monthly_trends['month'] = monthly_trends['date'].astype(str)
-        
-        fig_trends = make_subplots(
-            rows=2, cols=2,
-            subplot_titles=('Monthly Donations', 'Success Rate Trend', 'Response Time Trend', 'Waste Prevented'),
-            vertical_spacing=0.12
-        )
-        
-        fig_trends.add_trace(go.Scatter(x=monthly_trends['month'], y=monthly_trends['donation_id'], 
-                                       mode='lines+markers', name='Donations'), row=1, col=1)
-        fig_trends.add_trace(go.Scatter(x=monthly_trends['month'], y=monthly_trends['was_successful']*100, 
-                                       mode='lines+markers', name='Success %'), row=1, col=2)
-        fig_trends.add_trace(go.Scatter(x=monthly_trends['month'], y=monthly_trends['response_time_hours'], 
-                                       mode='lines+markers', name='Response Time'), row=2, col=1)
-        fig_trends.add_trace(go.Scatter(x=monthly_trends['month'], y=monthly_trends['waste_prevented_kg'], 
-                                       mode='lines+markers', name='Waste Prevented'), row=2, col=2)
-        
-        fig_trends.update_layout(height=600, showlegend=False, title_text="12-Month Performance Trends")
-        st.plotly_chart(fig_trends, use_container_width=True)
-        
-        # Performance benchmarks
-        st.subheader("Performance Benchmarks")
-        
-        col1, col2 = st.columns(2)
-        
-        with col1:
-            # Top performing areas
-            top_areas = df.groupby('area').agg({
-                'was_successful': 'mean',
-                'response_time_hours': 'mean',
-                'donation_id': 'count'
-            }).round(2)
-            top_areas = top_areas[top_areas['donation_id'] >= 20]
-            top_areas = top_areas.sort_values('was_successful', ascending=False)
-            
-            st.write("**Top Performing Areas:**")
-            st.dataframe(top_areas.head().round(2))
-        
-        with col2:
-            # Best food types
-            top_food_types = df.groupby('food_type').agg({
-                'was_successful': 'mean',
-                'response_time_hours': 'mean',
-                'donation_id': 'count'
-            }).round(2)
-            top_food_types = top_food_types[top_food_types['donation_id'] >= 10]
-            top_food_types = top_food_types.sort_values('was_successful', ascending=False)
-            
-            st.write("**Best Performing Food Types:**")
-            st.dataframe(top_food_types.round(2))
-    except Exception as e:
-        st.error(f"Error generating reports: {e}")
-
-# Real-time Predictions
-elif selected_page == "Real-time Predictions":
-    st.header("Real-time Prediction Interface")
+    cluster_names = {
+        0: "🌱 Eco Champions",
+        1: "🏢 Large Corporates", 
+        2: "🏪 Local Heroes",
+        3: "⭐ Premium Partners",
+        4: "🚀 Rising Stars"
+    }
     
-    st.markdown("""
-    Use this interface to get real-time predictions for donation success, response times, 
-    and optimal volunteer assignments based on current conditions.
-    """)
-    
-    # Prediction interface
-    col1, col2, col3 = st.columns(3)
-    
-    with col1:
-        st.subheader("Location & Logistics")
-        pred_area = st.selectbox("Area", df['area'].unique())
-        pred_distance = st.slider("Distance to Recipient (km)", 0.5, 20.0, 5.0)
-        current_hour = datetime.now().hour
-        pred_hour = st.slider("Hour of Day", 0, 23, current_hour)
-    
-    with col2:
-        st.subheader("Food Details")
-        pred_food_type = st.selectbox("Food Type", df['food_type'].unique())
-        pred_quantity = st.number_input("Quantity", min_value=1, max_value=500, value=50)
-        pred_expiry = st.slider("Hours Until Expiry", 1, 24, 4)
-    
-    with col3:
-        st.subheader("Context")
-        pred_weekday = st.slider("Day of Week (0=Mon)", 0, 6, datetime.now().weekday())
-        pred_urgency = st.slider("Urgency Score", 1, 10, 10 - min(pred_expiry, 10))
-        pred_donor_type = st.selectbox("Donor Type", df['donor_type'].unique())
-    
-    if st.button("Generate Predictions", type="primary"):
-        try:
-            # Success prediction based on historical patterns
-            area_success_rate = df[df['area'] == pred_area]['was_successful'].mean()
-            food_success_rate = df[df['food_type'] == pred_food_type]['was_successful'].mean()
-            urgency_factor = min(pred_urgency / 10, 1.0)
-            distance_penalty = max(0, (pred_distance - 5) * 0.05)
-            
-            predicted_success = min(1.0, (area_success_rate + food_success_rate) / 2 + urgency_factor * 0.2 - distance_penalty)
-            
-            # Response time prediction
-            area_avg_response = df[df['area'] == pred_area]['response_time_hours'].mean()
-            distance_factor = pred_distance * 0.1
-            urgency_boost = max(0, (10 - pred_urgency) * 0.1)
-            
-            predicted_response_time = area_avg_response + distance_factor + urgency_boost
-            
-            # Display predictions
+    for cluster_id in sorted(cluster_data['Cluster'].unique()):
+        cluster_subset = cluster_data[cluster_data['Cluster'] == cluster_id]
+        
+        with st.expander(f"Cluster {cluster_id}: {cluster_names.get(cluster_id, 'Unknown')}"):
             col1, col2, col3 = st.columns(3)
             
             with col1:
-                success_percent = predicted_success * 100
-                if success_percent > 75:
-                    st.success(f"**Success Probability: {success_percent:.1f}%**")
-                    st.write("High likelihood of successful delivery")
-                elif success_percent > 50:
-                    st.warning(f"**Success Probability: {success_percent:.1f}%**")
-                    st.write("Moderate chance of success")
-                else:
-                    st.error(f"**Success Probability: {success_percent:.1f}%**")
-                    st.write("High risk of failure")
+                st.metric("Count", len(cluster_subset))
+                st.metric("Avg Size Score", f"{cluster_subset['size_score'].mean():.1f}")
             
             with col2:
-                if predicted_response_time < 2:
-                    st.success(f"**Estimated Response: {predicted_response_time:.1f}h**")
-                    st.write("Fast response expected")
-                elif predicted_response_time < 4:
-                    st.warning(f"**Estimated Response: {predicted_response_time:.1f}h**")
-                    st.write("Moderate response time")
-                else:
-                    st.error(f"**Estimated Response: {predicted_response_time:.1f}h**")
-                    st.write("Slow response expected")
+                st.metric("Sustainability", f"{cluster_subset['sustainability_score'].mean():.1f}")
+                st.metric("Avg Footfall", f"{cluster_subset['avg_daily_footfall'].mean():.0f}")
             
             with col3:
-                estimated_impact = int(pred_quantity * 0.8) if pred_food_type == 'Cooked Meals' else int(pred_quantity * 0.6)
-                st.info(f"**Estimated Impact:**")
-                st.write(f"People served: {estimated_impact}")
-                st.write(f"Waste prevented: {pred_quantity * 0.5:.0f}kg")
-        except Exception as e:
-            st.error(f"Error generating predictions: {e}")
+                st.metric("Years Operating", f"{cluster_subset['years_operating'].mean():.1f}")
+                top_type = cluster_subset['type'].mode().iloc[0] if not cluster_subset['type'].mode().empty else 'Mixed'
+                st.metric("Dominant Type", top_type)
+
+def show_geographic_intelligence(fb_ds):
+    """Show geographic analysis and intelligence"""
     
-    # Real-time dashboard simulation
-    st.subheader("Live System Status")
+    st.header("🗺️ Geographic Intelligence & Hotspot Analysis")
     
-    # Simulate real-time metrics
-    col1, col2, col3, col4 = st.columns(4)
+    # Create base map
+    center_lat = fb_ds.donations_data['latitude'].mean()
+    center_lon = fb_ds.donations_data['longitude'].mean()
+    
+    m = folium.Map(location=[center_lat, center_lon], zoom_start=10)
+    
+    # Add donation heatmap
+    from folium.plugins import HeatMap
+    
+    # Prepare heatmap data
+    heat_data = [[row['latitude'], row['longitude'], row['quantity_kg']] 
+                 for idx, row in fb_ds.donations_data.iterrows()]
+    
+    HeatMap(heat_data).add_to(m)
+    
+    # Add cluster markers for donors
+    colors = ['red', 'blue', 'green', 'purple', 'orange']
+    clusters = fb_ds.cluster_model['clusters']
+    
+    for idx, row in fb_ds.donors_data.iterrows():
+        cluster_color = colors[clusters[idx] % len(colors)]
+        
+        folium.CircleMarker(
+            location=[row['latitude'], row['longitude']],
+            radius=5,
+            popup=f"Type: {row['type']}<br>Size: {row['size_score']}<br>Cluster: {clusters[idx]}",
+            color=cluster_color,
+            fillColor=cluster_color,
+            fillOpacity=0.6
+        ).add_to(m)
+    
+    # Display map
+    st.subheader("🌡️ Food Waste Heat Map & Donor Clusters")
+    st_folium(m, width=700, height=500)
+    
+    # Geographic statistics
+    col1, col2 = st.columns(2)
     
     with col1:
-        active_donations = np.random.randint(15, 35)
-        st.metric("Active Donations", active_donations, delta=np.random.randint(-3, 5))
+        st.subheader("📍 Geographic Distribution Analysis")
+        
+        # Density analysis by area
+        fb_ds.donations_data['lat_rounded'] = fb_ds.donations_data['latitude'].round(2)
+        fb_ds.donations_data['lon_rounded'] = fb_ds.donations_data['longitude'].round(2)
+        
+        density_analysis = fb_ds.donations_data.groupby(['lat_rounded', 'lon_rounded']).agg({
+            'quantity_kg': 'sum',
+            'pickup_success': 'mean',
+            'donation_id': 'count'
+        }).reset_index()
+        density_analysis.columns = ['Latitude', 'Longitude', 'Total_Kg', 'Success_Rate', 'Count']
+        
+        # Top hotspots
+        top_hotspots = density_analysis.nlargest(10, 'Total_Kg')
+        st.dataframe(top_hotspots)
     
     with col2:
-        available_volunteers = np.random.randint(8, 25)
-        st.metric("Available Volunteers", available_volunteers, delta=np.random.randint(-2, 4))
+        st.subheader("🎯 Success Rate by Location")
+        
+        fig = px.scatter(density_analysis, x='Total_Kg', y='Success_Rate', 
+                        size='Count', color='Success_Rate',
+                        title="Food Volume vs Success Rate by Location",
+                        color_continuous_scale='RdYlGn')
+        st.plotly_chart(fig, use_container_width=True)
+
+def show_time_series_analysis(fb_ds):
+    """Show time series analysis and forecasting"""
+    
+    st.header("📈 Advanced Time Series Analysis & Forecasting")
+    
+    # Prepare time series data
+    ts_data = fb_ds.donations_data.groupby(fb_ds.donations_data['date'].dt.date).agg({
+        'quantity_kg': 'sum',
+        'pickup_success': 'mean',
+        'donation_id': 'count'
+    }).reset_index()
+    ts_data.columns = ['Date', 'Total_Quantity', 'Success_Rate', 'Count']
+    ts_data['Date'] = pd.to_datetime(ts_data['Date'])
+    ts_data = ts_data.sort_values('Date')
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.subheader("📊 Historical Trends")
+        
+        fig = make_subplots(rows=3, cols=1, 
+                           subplot_titles=['Daily Food Volume', 'Success Rate', 'Number of Donations'],
+                           vertical_spacing=0.1)
+        
+        fig.add_trace(go.Scatter(x=ts_data['Date'], y=ts_data['Total_Quantity'],
+                                name='Food Volume (kg)', line=dict(color='blue')), row=1, col=1)
+        
+        fig.add_trace(go.Scatter(x=ts_data['Date'], y=ts_data['Success_Rate'],
+                                name='Success Rate', line=dict(color='green')), row=2, col=1)
+        
+        fig.add_trace(go.Scatter(x=ts_data['Date'], y=ts_data['Count'],
+                                name='Donation Count', line=dict(color='red')), row=3, col=1)
+        
+        fig.update_layout(height=600, showlegend=False)
+        st.plotly_chart(fig, use_container_width=True)
+    
+    with col2:
+        st.subheader("🔮 Forecasting & Seasonality")
+        
+        # Simple moving averages and trends
+        ts_data['MA_7'] = ts_data['Total_Quantity'].rolling(window=7).mean()
+        ts_data['MA_30'] = ts_data['Total_Quantity'].rolling(window=30).mean()
+        
+        fig = go.Figure()
+        fig.add_trace(go.Scatter(x=ts_data['Date'], y=ts_data['Total_Quantity'],
+                                mode='lines', name='Daily Volume', opacity=0.6))
+        fig.add_trace(go.Scatter(x=ts_data['Date'], y=ts_data['MA_7'],
+                                mode='lines', name='7-Day MA', line=dict(width=2)))
+        fig.add_trace(go.Scatter(x=ts_data['Date'], y=ts_data['MA_30'],
+                                mode='lines', name='30-Day MA', line=dict(width=2)))
+        
+        fig.update_layout(title="Food Volume with Moving Averages", height=400)
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # Weekly patterns
+        ts_data['DayOfWeek'] = ts_data['Date'].dt.day_name()
+        weekly_pattern = ts_data.groupby('DayOfWeek')['Total_Quantity'].mean().reindex(
+            ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+        )
+        
+        fig = px.bar(x=weekly_pattern.index, y=weekly_pattern.values,
+                    title="Average Food Volume by Day of Week")
+        st.plotly_chart(fig, use_container_width=True)
+    
+    # Seasonal decomposition
+    st.subheader("🔄 Seasonal Decomposition Analysis")
+    
+    try:
+        # Set date as index for decomposition
+        ts_for_decomp = ts_data.set_index('Date')['Total_Quantity'].fillna(method='ffill')
+        
+        if len(ts_for_decomp) >= 14:  # Need at least 2 periods for decomposition
+            decomposition = seasonal_decompose(ts_for_decomp, model='additive', period=7)
+            
+            fig = make_subplots(rows=4, cols=1, 
+                               subplot_titles=['Original', 'Trend', 'Seasonal', 'Residual'])
+            
+            fig.add_trace(go.Scatter(x=decomposition.observed.index, y=decomposition.observed.values,
+                                    name='Original'), row=1, col=1)
+            fig.add_trace(go.Scatter(x=decomposition.trend.index, y=decomposition.trend.values,
+                                    name='Trend'), row=2, col=1)
+            fig.add_trace(go.Scatter(x=decomposition.seasonal.index, y=decomposition.seasonal.values,
+                                    name='Seasonal'), row=3, col=1)
+            fig.add_trace(go.Scatter(x=decomposition.resid.index, y=decomposition.resid.values,
+                                    name='Residual'), row=4, col=1)
+            
+            fig.update_layout(height=800, showlegend=False)
+            st.plotly_chart(fig, use_container_width=True)
+        else:
+            st.info("Need more historical data for seasonal decomposition analysis.")
+    
+    except Exception as e:
+        st.warning("Seasonal decomposition analysis not available with current data.")
+
+def show_anomaly_detection(fb_ds):
+    """Show anomaly detection analysis"""
+    
+    st.header("🔍 AI-Powered Anomaly Detection")
+    
+    # Detect anomalies
+    features = ['quantity_kg', 'hours_to_expire', 'people_fed_estimate', 'day_of_week', 'hour_posted']
+    X = fb_ds.ml_data[features].fillna(0)
+    
+    anomaly_scores = fb_ds.anomaly_model.decision_function(X)
+    anomalies = fb_ds.anomaly_model.predict(X)
+    
+    # Add results to dataframe
+    fb_ds.donations_data['anomaly_score'] = anomaly_scores
+    fb_ds.donations_data['is_anomaly'] = anomalies == -1
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.subheader("🚨 Anomaly Detection Results")
+        
+        anomaly_count = fb_ds.donations_data['is_anomaly'].sum()
+        anomaly_rate = anomaly_count / len(fb_ds.donations_data) * 100
+        
+        st.metric("Anomalies Detected", f"{anomaly_count}")
+        st.metric("Anomaly Rate", f"{anomaly_rate:.2f}%")
+        
+        # Show most anomalous donations
+        st.subheader("🔍 Most Unusual Donations")
+        anomalous_donations = fb_ds.donations_data[fb_ds.donations_data['is_anomaly']].nsmallest(10, 'anomaly_score')
+        
+        display_cols = ['donor_id', 'food_type', 'quantity_kg', 'hours_to_expire', 'pickup_success']
+        st.dataframe(anomalous_donations[display_cols])
+    
+    with col2:
+        st.subheader("📊 Anomaly Score Distribution")
+        
+        fig = px.histogram(fb_ds.donations_data, x='anomaly_score', 
+                          color='is_anomaly', nbins=50,
+                          title="Distribution of Anomaly Scores")
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # 2D anomaly visualization
+        fig = px.scatter(fb_ds.donations_data, x='quantity_kg', y='hours_to_expire',
+                        color='is_anomaly', title="Anomalies in Quantity vs Expiry Time")
+        st.plotly_chart(fig, use_container_width=True)
+    
+    # Anomaly patterns analysis
+    st.subheader("📈 Anomaly Patterns Analysis")
+    
+    col1, col2, col3 = st.columns(3)
+    
+    with col1:
+        # Anomalies by food type
+        anomaly_by_type = fb_ds.donations_data.groupby('food_type')['is_anomaly'].agg(['count', 'sum']).reset_index()
+        anomaly_by_type['anomaly_rate'] = anomaly_by_type['sum'] / anomaly_by_type['count']
+        
+        fig = px.bar(anomaly_by_type, x='food_type', y='anomaly_rate',
+                    title="Anomaly Rate by Food Type")
+        fig.update_layout(xaxis_tickangle=-45)
+        st.plotly_chart(fig, use_container_width=True)
+    
+    with col2:
+        # Anomalies by hour
+        anomaly_by_hour = fb_ds.donations_data.groupby('hour_posted')['is_anomaly'].agg(['count', 'sum']).reset_index()
+        anomaly_by_hour['anomaly_rate'] = anomaly_by_hour['sum'] / anomaly_by_hour['count']
+        
+        fig = px.line(anomaly_by_hour, x='hour_posted', y='anomaly_rate',
+                     title="Anomaly Rate by Hour Posted")
+        st.plotly_chart(fig, use_container_width=True)
     
     with col3:
-        avg_wait_time = np.random.uniform(1.5, 3.5)
-        st.metric("Avg Wait Time", f"{avg_wait_time:.1f}h", delta=f"{np.random.uniform(-0.5, 0.5):.1f}h")
+        # Anomalies by success
+        success_anomaly = fb_ds.donations_data.groupby('pickup_success')['is_anomaly'].mean()
+        
+        fig = px.bar(x=['Failed', 'Successful'], y=[success_anomaly[False], success_anomaly[True]],
+                    title="Anomaly Rate: Failed vs Successful Pickups")
+        st.plotly_chart(fig, use_container_width=True)
+
+def show_network_analysis(fb_ds):
+    """Show network analysis of donors, volunteers, and NGOs"""
     
-    with col4:
-        system_efficiency = np.random.uniform(75, 95)
-        st.metric("System Efficiency", f"{system_efficiency:.1f}%", delta=f"{np.random.uniform(-2, 3):.1f}%")
-
-# Footer
-st.markdown("---")
-st.markdown("""
-### About This Data Science Platform
-
-This comprehensive analytics platform demonstrates advanced data science techniques applied to food rescue operations:
-
-**Data Science Techniques Used:**
-- **Machine Learning**: Random Forest models for success prediction and response time estimation
-- **Statistical Analysis**: Hypothesis testing, ANOVA, correlation analysis
-- **Time Series Analysis**: Trend decomposition, seasonal pattern detection
-- **Clustering**: K-means clustering to identify donation patterns
-- **Geospatial Analytics**: Location-based performance analysis
-- **Predictive Modeling**: Real-time prediction interfaces
-
-**Technical Stack:**
-- **Data Processing**: Pandas, NumPy
-- **Machine Learning**: Scikit-learn
-- **Visualization**: Plotly, Matplotlib, Seaborn
-- **Statistical Testing**: SciPy
-- **Geospatial**: Folium
-
----
-*Built with Python, Streamlit, and advanced data science libraries*
-""")
-
-# Sidebar with data science tools
-with st.sidebar:
-    st.markdown("---")
-    st.markdown("### Data Science Tools")
-    st.markdown("""
-    **Analysis Features:**
-    - Statistical Testing
-    - Machine Learning Models  
-    - Time Series Analysis
-    - Geospatial Analytics
-    - Predictive Modeling
-    - Real-time Predictions
-    """)
+    st.header("🌐 Social Network Analysis")
     
-    st.markdown("---")
-    st.markdown("### Quick Stats")
+    # Build network graph
+    G = nx.Graph()
     
-    # Real-time metrics in sidebar
-    total_records = len(df)
-    date_range = (df['date'].max() - df['date'].min()).days
-    success_rate = df['was_successful'].mean() * 100
+    # Add nodes
+    for donor in fb_ds.donors_data['donor_id']:
+        G.add_node(donor, type='donor')
     
-    st.markdown(f"""
-    **Dataset Size:** {total_records:,} records  
-    **Date Range:** {date_range} days  
-    **Success Rate:** {success_rate:.1f}%  
-    **Areas Covered:** {df['area'].nunique()}  
-    **Food Types:** {df['food_type'].nunique()}
-    """)
+    for volunteer in fb_ds.volunteers_data['volunteer_id']:
+        G.add_node(volunteer, type='volunteer')
     
-    if st.button("Refresh Data"):
-        st.cache_data.clear()
-        st.rerun()
+    # Add edges based on successful connections
+    for _, connection in fb_ds.network_data.iterrows():
+        G.add_edge(connection['donor_id'], connection['volunteer_id'], 
+                  weight=connection['connection_strength'])
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.subheader("📊 Network Statistics")
+        
+        st.metric("Total Nodes", G.number_of_nodes())
+        st.metric("Total Connections", G.number_of_edges())
+        
+        if G.number_of_edges() > 0:
+            st.metric("Network Density", f"{nx.density(G):.4f}")
+            
+            # Centrality measures
+            degree_centrality = nx.degree_centrality(G)
+            betweenness_centrality = nx.betweenness_centrality(G)
+            
+            # Top connected nodes
+            top_degree = sorted(degree_centrality.items(), key=lambda x: x[1], reverse=True)[:5]
+            top_between = sorted(betweenness_centrality.items(), key=lambda x: x[1], reverse=True)[:5]
+            
+            st.subheader("🔗 Most Connected Nodes")
+            for node, centrality in top_degree:
+                node_type = 'Donor' if node.startswith('D_') else 'Volunteer'
+                st.write(f"{node_type}: {node} - Centrality: {centrality:.3f}")
+            
+            st.subheader("🌉 Bridge Nodes (High Betweenness)")
+            for node, centrality in top_between:
+                if centrality > 0:
+                    node_type = 'Donor' if node.startswith('D_') else 'Volunteer'
+                    st.write(f"{node_type}: {node} - Betweenness: {centrality:.3f}")
+    
+    with col2:
+        st.subheader("📈 Network Metrics Visualization")
+        
+        # Degree distribution
+        degrees = [G.degree(n) for n in G.nodes()]
+        
+        fig = px.histogram(x=degrees, nbins=20, title="Degree Distribution")
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # Connection strength analysis
+        edge_weights = [G[u][v]['weight'] for u, v in G.edges()]
+        
+        fig = px.histogram(x=edge_weights, nbins=20, title="Connection Strength Distribution")
+        st.plotly_chart(fig, use_container_width=True)
+    
+    # Community detection
+    st.subheader("👥 Community Detection")
+    
+    try:
+        communities = nx.community.greedy_modularity_communities(G)
+        
+        st.write(f"Found {len(communities)} communities in the network")
+        
+        # Show community sizes
+        community_sizes = [len(community) for community in communities]
+        
+        fig = px.bar(x=range(len(community_sizes)), y=community_sizes,
+                    title="Community Sizes")
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # Community details
+        for i, community in enumerate(communities[:5]):  # Show top 5 communities
+            donors_in_community = [node for node in community if node.startswith('D_')]
+            volunteers_in_community = [node for node in community if node.startswith('V_')]
+            
+            st.write(f"**Community {i+1}:** {len(donors_in_community)} donors, {len(volunteers_in_community)} volunteers")
+    
+    except Exception as e:
+        st.info("Community detection not available for current network structure.")
+
+def show_optimization_engine(fb_ds):
+    """Show optimization recommendations"""
+    
+    st.header("🎯 AI-Powered Optimization Engine")
+    
+    # Route optimization
+    st.subheader("🚚 Delivery Route Optimization")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        st.subheader("📍 Route Planning")
+        
+        # Select active donations for route optimization
+        active_donations = fb_ds.donations_data.head(20)  # Simulate active donations
+        
+        # Simple route optimization simulation
+        route_efficiency = np.random.uniform(0.6, 0.9, len(active_donations))
+        
+        optimization_results = pd.DataFrame({
+            'Donation_ID': active_donations['donation_id'],
+            'Location': active_donations[['latitude', 'longitude']].apply(
+                lambda x: f"({x['latitude']:.3f}, {x['longitude']:.3f})", axis=1),
+            'Urgency_Hours': active_donations['hours_to_expire'],
+            'Quantity_kg': active_donations['quantity_kg'],
+            'Route_Efficiency': route_efficiency,
+            'Priority_Score': active_donations['hours_to_expire'].max() - active_donations['hours_to_expire'] + route_efficiency
+        })
+        
+        # Sort by priority score
+        optimization_results = optimization_results.sort_values('Priority_Score', ascending=False)
+        
+        st.dataframe(optimization_results)
+    
+    with col2:
+        st.subheader("⏰ Optimal Timing Analysis")
+        
+        # Analyze best posting times
+        hourly_success = fb_ds.donations_data.groupby('hour_posted')['pickup_success'].mean()
+        
+        fig = px.bar(x=hourly_success.index, y=hourly_success.values,
+                    title="Success Rate by Posting Hour")
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # Day of week optimization
+        daily_success = fb_ds.donations_data.groupby('day_of_week')['pickup_success'].mean()
+        day_names = ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday']
+        
+        fig = px.bar(x=day_names, y=daily_success.values,
+                    title="Success Rate by Day of Week")
+        st.plotly_chart(fig, use_container_width=True)
+    
+    # Optimization recommendations
+    st.subheader("💡 AI Recommendations")
+    
+    recommendations = [
+        {
+            "Type": "⏰ Timing",
+            "Recommendation": f"Best posting time: {hourly_success.idxmax()}:00",
+            "Impact": "Up to 15% increase in pickup success",
+            "Confidence": "High"
+        },
+        {
+            "Type": "📍 Location",
+            "Recommendation": "Focus on high-density areas during peak hours",
+            "Impact": "20% reduction in delivery time",
+            "Confidence": "Medium"
+        },
+        {
+            "Type": "🍽️ Food Type",
+            "Recommendation": "Prioritize prepared food donations (highest urgency)",
+            "Impact": "25% reduction in food waste",
+            "Confidence": "High"
+        },
+        {
+            "Type": "👥 Volunteer",
+            "Recommendation": "Deploy volunteers based on historical success patterns",
+            "Impact": "30% improvement in coverage",
+            "Confidence": "Medium"
+        }
+    ]
+    
+    for rec in recommendations:
+        with st.expander(f"{rec['Type']}: {rec['Recommendation']}"):
+            col1, col2 = st.columns(2)
+            with col1:
+                st.write(f"**Expected Impact:** {rec['Impact']}")
+            with col2:
+                st.write(f"**Confidence Level:** {rec['Confidence']}")
+    
+    # Resource allocation optimization
+    st.subheader("📊 Resource Allocation Optimization")
+    
+    col1, col2 = st.columns(2)
+    
+    with col1:
+        # Volunteer allocation
+        volunteer_workload = fb_ds.network_data.groupby('volunteer_id').size().reset_index()
+        volunteer_workload.columns = ['Volunteer_ID', 'Current_Workload']
+        
+        # Simulate optimal workload
+        volunteer_workload['Optimal_Workload'] = np.random.poisson(
+            volunteer_workload['Current_Workload'].mean(), 
+            len(volunteer_workload)
+        )
+        volunteer_workload['Efficiency_Score'] = (
+            volunteer_workload['Optimal_Workload'] / 
+            (volunteer_workload['Current_Workload'] + 1)
+        )
+        
+        fig = px.scatter(volunteer_workload, x='Current_Workload', y='Optimal_Workload',
+                        color='Efficiency_Score', title="Volunteer Workload Optimization")
+        st.plotly_chart(fig, use_container_width=True)
+    
+    with col2:
+        # Coverage gap analysis
+        coverage_data = pd.DataFrame({
+            'Area': ['North', 'South', 'East', 'West', 'Central'],
+            'Current_Coverage': [0.8, 0.6, 0.9, 0.5, 0.95],
+            'Demand_Level': [0.7, 0.9, 0.6, 0.8, 0.85],
+            'Gap': [0.1, -0.3, 0.3, -0.3, 0.1]
+        })
+        
+        fig = px.bar(coverage_data, x='Area', y='Gap',
+                    color='Gap', color_continuous_scale='RdYlGn',
+                    title="Coverage Gap Analysis by Area")
+        st.plotly_chart(fig, use_container_width=True)
+
+if __name__ == "__main__":
+    main()
