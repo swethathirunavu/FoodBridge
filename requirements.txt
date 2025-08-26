@@ -1,25 +1,20 @@
-# Core app
+# Core
 streamlit>=1.33
 pandas>=2.0
 numpy>=1.24
 
-# Visualization
-matplotlib>=3.7
-seaborn>=0.12
+# Visualization & Maps
 plotly>=5.20
 folium>=0.15
 streamlit-folium>=0.17
 
-# Machine Learning & Data Science
+# ML / Data
 scikit-learn>=1.3
 xgboost>=2.0
-statsmodels>=0.14
-scipy>=1.11
-
-# Graph/Network analysis
 networkx>=3.1
 
 # Utilities
 geopy>=2.4
 joblib>=1.3
 python-dateutil>=2.8
+
