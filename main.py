@@ -647,7 +647,7 @@ elif page == "🚗 Pickups":
                         ss.food_donations[i]["claimed_by"] = "VOL001"
                         break
                 st.success(f"✅ Claimed! Contact {d['donor_name']} at {d['donor_phone']}")
-                st.experimental_rerun()
+                st.rerun()
             if c2.button("📱 Contact Donor", key=f"contact_{d['id']}"):
                 st.info(f"📞 Call: {d['donor_phone']}")
             if c3.button("🗺️ Directions", key=f"dir_{d['id']}"):
