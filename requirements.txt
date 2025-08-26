@@ -1,51 +1,14 @@
-# Core Streamlit and Web Framework
 streamlit>=1.28.0
-streamlit-folium>=0.15.0
-
-# Data Manipulation and Analysis
-pandas>=2.0.0
+pandas>=1.5.0
 numpy>=1.24.0
-
-# Data Visualization
-matplotlib>=3.7.0
+matplotlib>=3.6.0
 seaborn>=0.12.0
 plotly>=5.15.0
-
-# Geospatial and Mapping
 folium>=0.14.0
+streamlit-folium>=0.13.0
 geopy>=2.3.0
-
-# Machine Learning and AI
 scikit-learn>=1.3.0
-xgboost>=1.7.0
-scipy>=1.11.0
+scipy>=1.10.0
 statsmodels>=0.14.0
 networkx>=3.1.0
-joblib>=1.3.0
-
-# Utility Libraries
-hashlib2>=1.0.0
-warnings
-
-# Optional: For production deployment
-# gunicorn>=21.2.0
-# streamlit-authenticator>=0.2.3
-
-# Optional: For enhanced ML capabilities
-# tensorflow>=2.13.0
-# torch>=2.0.0
-# transformers>=4.30.0
-
-# Optional: For database connectivity
-# psycopg2-binary>=2.9.7
-# pymongo>=4.4.1
-# sqlalchemy>=2.0.0
-
-# Optional: For API integration
-# requests>=2.31.0
-# fastapi>=0.100.0
-# uvicorn>=0.23.0
-
-# Optional: For enhanced data processing
-# polars>=0.18.0
-# dask>=2023.7.0
+xgboost>=1.7.0
