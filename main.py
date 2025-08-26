@@ -320,7 +320,7 @@ elif page=="📊 Analytics":
 # ===================== SIDEBAR EXTRAS =====================
 st.sidebar.markdown("---")
 st.sidebar.markdown("### 🚨 Emergency Contacts")
-st.sidebar.markdown("**Food Safety:** 1800-123-4567  
+st.sidebar.markdown("**Food Safety:** 1800-123-4567 ) 
 **Volunteer Support:** +91-9876543299  
 **24/7 Helpline:** 1800-FOODBRIDGE")
 if ss.current_user_type:
