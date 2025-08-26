@@ -330,3 +330,4 @@ if ss.current_user_type:
     st.sidebar.markdown(f"🚗 **Active Volunteers:** {len([v for v in ss.volunteers if v['availability']=='Available'])}")
     st.sidebar.markdown(f"🏢 **Orgs:** {len(ss.organizations)}")
     st.sidebar.markdown(f"⚡ **Urgent:** {len([d for d in ss.food_donations if d['status']=='Available' and (d['expiry_time']-dt.now()).total_seconds()<3600])}")
+
